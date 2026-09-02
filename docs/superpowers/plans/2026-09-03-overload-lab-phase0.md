@@ -81,6 +81,18 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
+    <!-- spring-boot-starter-parent gives us, for free: managed dependency versions,
+         the spring-boot-maven-plugin with its repackage goal already bound, Lombok
+         excluded from the repackaged jar, and resource filtering with @..@ delimiters
+         so Spring's own ${...} placeholders in application.yml are left alone. -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
     <groupId>com.overloadlab</groupId>
     <artifactId>overload-lab-parent</artifactId>
     <version>0.1.0</version>
@@ -93,40 +105,18 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
 
     <properties>
         <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.3.5</spring-boot.version>
     </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>${spring-boot.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
     <build>
         <pluginManagement>
             <plugins>
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
-                    <version>${spring-boot.version}</version>
-                    <!-- This project uses a custom aggregator rather than
-                         spring-boot-starter-parent, so nothing binds the repackage
-                         goal automatically. Bound once here; every module that
-                         declares the plugin inherits it and produces a runnable jar.
-                         Without this, mvn package yields a jar that fails at runtime
-                         with "no main manifest attribute". -->
-                    <!-- Lombok is compile-time only. spring-boot-starter-parent
-                         normally excludes it from the fat jar; we use a custom
-                         aggregator, so it must be excluded explicitly. -->
+                    <!-- starter-parent binds the repackage goal for us, but does NOT
+                         exclude Lombok: <optional>true</optional> governs transitive
+                         resolution, not packaging, so Lombok would otherwise ship
+                         inside BOOT-INF/lib. Declared once here; both modules inherit. -->
                     <configuration>
                         <excludes>
                             <exclude>
@@ -135,13 +125,6 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
                             </exclude>
                         </excludes>
                     </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>repackage</goal>
-                            </goals>
-                        </execution>
-                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>
