@@ -308,7 +308,7 @@ logging:
 - [ ] **Step 6: Build and smoke test**
 
 ```bash
-mvn -q -pl downstream-sim -am package -DskipTests
+mvn -q -f downstream-sim/pom.xml package -DskipTests
 java -jar downstream-sim/target/downstream-sim-0.1.0.jar &
 sleep 12
 curl -s -w ' [%{http_code}] %{time_total}s\n' -X POST localhost:9090/ingest -H 'Content-Type: application/json' -d '{}'
@@ -344,7 +344,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY downstream-sim/pom.xml downstream-sim/
 COPY downstream-sim/src downstream-sim/src
-RUN mvn -q -B -pl downstream-sim -am package -DskipTests
+RUN mvn -q -B -f downstream-sim/pom.xml package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
@@ -1302,7 +1302,7 @@ RUN mvn -q -B -f vendor/distributed-rate-limiter/pom.xml \
 COPY pom.xml .
 COPY gateway/pom.xml gateway/
 COPY gateway/src gateway/src
-RUN mvn -q -B -pl gateway -am package -DskipTests
+RUN mvn -q -B -f gateway/pom.xml package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
