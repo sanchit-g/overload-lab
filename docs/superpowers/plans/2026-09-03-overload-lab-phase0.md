@@ -51,7 +51,7 @@
 **Files:**
 - Create: `.gitignore`, `pom.xml`, `README.md`
 
-- [ ] **Step 1: Create `.gitignore`**
+- [x] **Step 1: Create `.gitignore`**
 
 ```gitignore
 target/
@@ -64,7 +64,7 @@ docs/img/*.png
 !docs/img/.gitkeep
 ```
 
-- [ ] **Step 2: Add the rate limiter as a pinned submodule**
+- [x] **Step 2: Add the rate limiter as a pinned submodule**
 
 ```bash
 git submodule add https://github.com/sanchit-g/distributed-rate-limiter.git vendor/distributed-rate-limiter
@@ -73,7 +73,7 @@ git -C vendor/distributed-rate-limiter checkout 2789431a184f977e08d4466969f13368
 
 Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
 
-- [ ] **Step 3: Create aggregator `pom.xml`**
+- [x] **Step 3: Create aggregator `pom.xml`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -125,7 +125,7 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
 </project>
 ```
 
-- [ ] **Step 4: Verify toolchain is present**
+- [x] **Step 4: Verify toolchain is present**
 
 ```bash
 java -version && mvn -v && docker --version && k6 version
@@ -133,7 +133,7 @@ java -version && mvn -v && docker --version && k6 version
 
 Expected: Java 21+, Maven 3.8+, Docker, k6. If k6 is missing: `brew install k6`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .gitignore pom.xml .gitmodules vendor/distributed-rate-limiter docs/
