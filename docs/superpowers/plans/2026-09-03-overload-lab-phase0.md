@@ -151,7 +151,7 @@ git commit -m "chore: scaffold overload-lab with pinned rate limiter submodule"
 - Create: `downstream-sim/src/main/java/com/overloadlab/sim/SimController.java`
 - Create: `downstream-sim/src/main/resources/application.yml`
 
-- [ ] **Step 1: Create `downstream-sim/pom.xml`**
+- [x] **Step 1: Create `downstream-sim/pom.xml`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -184,7 +184,7 @@ git commit -m "chore: scaffold overload-lab with pinned rate limiter submodule"
 </project>
 ```
 
-- [ ] **Step 2: Create `DownstreamSimApplication.java`**
+- [x] **Step 2: Create `DownstreamSimApplication.java`**
 
 ```java
 package com.overloadlab.sim;
@@ -200,7 +200,7 @@ public class DownstreamSimApplication {
 }
 ```
 
-- [ ] **Step 3: Create `Knobs.java`**
+- [x] **Step 3: Create `Knobs.java`**
 
 ```java
 package com.overloadlab.sim;
@@ -224,7 +224,7 @@ public record Knobs(long latencyMs, long jitterMs, double failureRate, String mo
 }
 ```
 
-- [ ] **Step 4: Create `SimController.java`**
+- [x] **Step 4: Create `SimController.java`**
 
 ```java
 package com.overloadlab.sim;
@@ -286,7 +286,7 @@ public class SimController {
 }
 ```
 
-- [ ] **Step 5: Create `downstream-sim/src/main/resources/application.yml`**
+- [x] **Step 5: Create `downstream-sim/src/main/resources/application.yml`**
 
 ```yaml
 spring:
@@ -305,7 +305,7 @@ logging:
     root: INFO
 ```
 
-- [ ] **Step 6: Build and smoke test**
+- [x] **Step 6: Build and smoke test**
 
 ```bash
 mvn -q -f downstream-sim/pom.xml package -DskipTests
@@ -320,7 +320,7 @@ kill %1
 
 Expected: first `/ingest` ~0.02-0.04s with `[200]`; after `/control`, ~0.40s with `[200]`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add downstream-sim

@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: downstream-sim
+  threads:
+    virtual:
+      enabled: false
+server:
+  port: 9090
+  tomcat:
+    threads:
+      max: 400
+logging:
+  level:
+    root: INFO
