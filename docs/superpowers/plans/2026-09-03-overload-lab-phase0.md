@@ -346,8 +346,9 @@ git commit -m "feat(sim): downstream simulator with runtime latency and failure 
 
 **Files:**
 - Create: `downstream-sim/Dockerfile`
+- Create: `.dockerignore`
 
-- [ ] **Step 1: Create `downstream-sim/Dockerfile`**
+- [x] **Step 1: Create `downstream-sim/Dockerfile`**
 
 Build context is the repo root so the aggregator pom resolves.
 
@@ -366,7 +367,24 @@ EXPOSE 9090
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 ```
 
-- [ ] **Step 2: Verify the image builds**
+**Step 1b: Create `.dockerignore`**
+
+The build context is the repo root, so without this every image build uploads `target/` directories and the entire `.git` history to the Docker daemon. `vendor/` must NOT be ignored — Task 13's gateway Dockerfile needs the submodule in its context to build the rate limiter starter.
+
+```
+.git
+.gitignore
+target/
+**/target/
+docs/
+results/
+*.md
+.idea/
+*.iml
+.DS_Store
+```
+
+- [x] **Step 2: Verify the image builds**
 
 ```bash
 docker build -f downstream-sim/Dockerfile -t overload-lab/downstream-sim:dev .
@@ -374,10 +392,10 @@ docker build -f downstream-sim/Dockerfile -t overload-lab/downstream-sim:dev .
 
 Expected: build succeeds, image tagged.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
-git add downstream-sim/Dockerfile
+git add downstream-sim/Dockerfile .dockerignore
 git commit -m "build(sim): multi-stage Dockerfile for downstream-sim"
 ```
 
