@@ -406,7 +406,7 @@ git commit -m "build(sim): multi-stage Dockerfile for downstream-sim"
 **Files:**
 - Create: `db/init.sql`
 
-- [ ] **Step 1: Create `db/init.sql`**
+- [x] **Step 1: Create `db/init.sql`**
 
 ```sql
 -- Deliberately trivial. Postgres is in the write path so that a Hikari connection
@@ -422,7 +422,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_batch ON events (batch_id);
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add db/init.sql
