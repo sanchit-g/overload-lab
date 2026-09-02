@@ -438,7 +438,7 @@ git commit -m "feat(db): events table schema"
 - Create: `gateway/src/main/java/com/overloadlab/gateway/GatewayApplication.java`
 - Create: `gateway/src/main/resources/application.yml`
 
-- [ ] **Step 1: Create `gateway/pom.xml`**
+- [x] **Step 1: Create `gateway/pom.xml`**
 
 `rate-limiter-spring-boot-starter` is declared now but unused until Phase 1; it verifies the submodule build wiring works from the start.
 
@@ -508,7 +508,7 @@ git commit -m "feat(db): events table schema"
 </project>
 ```
 
-- [ ] **Step 2: Create `GatewayApplication.java`**
+- [x] **Step 2: Create `GatewayApplication.java`**
 
 ```java
 package com.overloadlab.gateway;
@@ -527,7 +527,7 @@ public class GatewayApplication {
 }
 ```
 
-- [ ] **Step 3: Create `gateway/src/main/resources/application.yml`**
+- [x] **Step 3: Create `gateway/src/main/resources/application.yml`**
 
 Note `spring.threads.virtual.enabled: false` — the demonstration depends on a bounded pool of platform threads.
 
@@ -607,7 +607,7 @@ logging:
     com.overloadlab: INFO
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add gateway/pom.xml gateway/src/main/java/com/overloadlab/gateway/GatewayApplication.java gateway/src/main/resources/application.yml
@@ -622,7 +622,7 @@ git commit -m "feat(gateway): module skeleton and stage-flag configuration"
 - Create: `gateway/src/main/java/com/overloadlab/gateway/config/OverloadProperties.java`
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ops/OverloadEndpoint.java`
 
-- [ ] **Step 1: Create `OverloadProperties.java`**
+- [x] **Step 1: Create `OverloadProperties.java`**
 
 ```java
 package com.overloadlab.gateway.config;
@@ -709,7 +709,7 @@ public class OverloadProperties {
 }
 ```
 
-- [ ] **Step 2: Create `OverloadEndpoint.java`**
+- [x] **Step 2: Create `OverloadEndpoint.java`**
 
 This is the truth source the preflight assertion reads. It reports what is *actually* wired, not what was requested, so a flag that silently failed to take effect is caught before a five-minute run is wasted.
 
@@ -764,7 +764,7 @@ public class OverloadEndpoint {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/config gateway/src/main/java/com/overloadlab/gateway/ops

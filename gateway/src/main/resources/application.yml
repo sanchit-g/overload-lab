@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: gateway
+  threads:
+    virtual:
+      enabled: false
+  datasource:
+    url: jdbc:postgresql://postgres:5432/overload
+    username: overload
+    password: overload
+    hikari:
+      maximum-pool-size: ${OVERLOAD_HIKARI_MAX:20}
+      minimum-idle: ${OVERLOAD_HIKARI_MAX:20}
+      connection-timeout: 30000
+      pool-name: gateway-pool
+      register-mbeans: false
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 200
+
+overload:
+  workers: ${OVERLOAD_WORKERS:64}
+  queue-capacity: ${OVERLOAD_QUEUE_CAPACITY:5000}
+  downstream-url: ${OVERLOAD_DOWNSTREAM_URL:http://downstream-sim:9090/ingest}
+  http-pool-size: ${OVERLOAD_HTTP_POOL:32}
+  max-batch-size: 500
+  http:
+    timeouts:
+      enabled: ${OVERLOAD_TIMEOUTS_ENABLED:false}
+      connect-ms: ${OVERLOAD_CONNECT_MS:500}
+      response-ms: ${OVERLOAD_RESPONSE_MS:250}
+      lease-ms: ${OVERLOAD_LEASE_MS:100}
+  queue:
+    bounded: ${OVERLOAD_QUEUE_BOUNDED:false}
+  admission:
+    enabled: ${OVERLOAD_ADMISSION_ENABLED:false}
+    limit: ${OVERLOAD_ADMISSION_LIMIT:40}
+    window: ${OVERLOAD_ADMISSION_WINDOW:1}
+  breaker:
+    enabled: ${OVERLOAD_BREAKER_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,overload
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: gateway
+      instance: ${HOSTNAME:local}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        overload.event.e2e: true
+      minimum-expected-value:
+        overload.event.e2e: 1ms
+      maximum-expected-value:
+        overload.event.e2e: 120s
+
+logging:
+  level:
+    root: WARN
+    com.overloadlab: INFO
