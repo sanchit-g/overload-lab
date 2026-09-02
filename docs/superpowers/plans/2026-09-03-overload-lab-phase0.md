@@ -124,6 +124,17 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
                          declares the plugin inherits it and produces a runnable jar.
                          Without this, mvn package yields a jar that fails at runtime
                          with "no main manifest attribute". -->
+                    <!-- Lombok is compile-time only. spring-boot-starter-parent
+                         normally excludes it from the fat jar; we use a custom
+                         aggregator, so it must be excluded explicitly. -->
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
                     <executions>
                         <execution>
                             <goals>
@@ -184,6 +195,11 @@ git commit -m "chore: scaffold overload-lab with pinned rate limiter submodule"
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 
     <build>
@@ -202,6 +218,9 @@ git commit -m "chore: scaffold overload-lab with pinned rate limiter submodule"
 ```java
 package com.overloadlab.sim;
 
+import lombok.extern.slf4j.Slf4j;
+import lombok.extern.slf4j.Slf4j;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -242,8 +261,6 @@ public record Knobs(long latencyMs, long jitterMs, double failureRate, String mo
 ```java
 package com.overloadlab.sim;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -255,10 +272,10 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Slf4j
 @RestController
 public class SimController {
 
-    private static final Logger log = LoggerFactory.getLogger(SimController.class);
 
     private final AtomicReference<Knobs> knobs = new AtomicReference<>(Knobs.healthy());
 
@@ -471,6 +488,11 @@ git commit -m "feat(db): events table schema"
             <groupId>com.ratelimiter</groupId>
             <artifactId>rate-limiter-spring-boot-starter</artifactId>
             <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 
@@ -990,8 +1012,6 @@ This is the entire point of the lab. The connection is acquired, used, and then 
 package com.overloadlab.gateway.ingest;
 
 import com.overloadlab.gateway.config.OverloadProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -1000,10 +1020,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class EventWriter {
 
-    private static final Logger log = LoggerFactory.getLogger(EventWriter.class);
     private static final String INSERT =
             "INSERT INTO events (event_id, batch_id, payload) VALUES (?, ?, ?)";
 
@@ -1092,8 +1112,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ArrayBlockingQueue;
@@ -1102,10 +1120,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class IngestQueue {
 
-    private static final Logger log = LoggerFactory.getLogger(IngestQueue.class);
 
     private final BlockingQueue<Runnable> queue;
     private final ThreadPoolExecutor executor;

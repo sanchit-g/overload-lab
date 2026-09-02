@@ -44,6 +44,17 @@
                          spring-boot-starter-parent, so nothing binds the repackage
                          goal automatically. Bound once here; every module that
                          declares the plugin inherits it and produces a runnable jar. -->
+                    <!-- Lombok is compile-time only. spring-boot-starter-parent
+                         normally excludes it from the fat jar; we use a custom
+                         aggregator, so it must be excluded explicitly. -->
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
                     <executions>
                         <execution>
                             <goals>
