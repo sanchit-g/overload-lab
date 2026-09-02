@@ -1,0 +1,10 @@
+.git
+.gitignore
+target/
+**/target/
+docs/
+results/
+*.md
+.idea/
+*.iml
+.DS_Store
