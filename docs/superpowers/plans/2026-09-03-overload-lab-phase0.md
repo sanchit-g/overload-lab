@@ -780,7 +780,7 @@ git commit -m "feat(gateway): stage flags and /actuator/overload preflight endpo
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/EventBatch.java`
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/EventTask.java`
 
-- [ ] **Step 1: Create `IngestEvent.java`**
+- [x] **Step 1: Create `IngestEvent.java`**
 
 ```java
 package com.overloadlab.gateway.ingest;
@@ -793,7 +793,7 @@ public record IngestEvent(
 ) {}
 ```
 
-- [ ] **Step 2: Create `EventBatch.java`**
+- [x] **Step 2: Create `EventBatch.java`**
 
 ```java
 package com.overloadlab.gateway.ingest;
@@ -810,7 +810,7 @@ public record EventBatch(
 ) {}
 ```
 
-- [ ] **Step 3: Create `EventTask.java`**
+- [x] **Step 3: Create `EventTask.java`**
 
 `enqueuedNanos` is the start of the end-to-end clock: the true latency of an event is measured from the moment it is accepted, not from when a worker happens to pick it up.
 
@@ -825,7 +825,7 @@ public record EventTask(
 ) {}
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/ingest
@@ -839,7 +839,7 @@ git commit -m "feat(gateway): ingest domain types"
 **Files:**
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/IngestMetrics.java`
 
-- [ ] **Step 1: Create `IngestMetrics.java`**
+- [x] **Step 1: Create `IngestMetrics.java`**
 
 ```java
 package com.overloadlab.gateway.ingest;
@@ -899,7 +899,7 @@ public class IngestMetrics {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/ingest/IngestMetrics.java
