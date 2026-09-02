@@ -118,6 +118,19 @@ Expected: `vendor/distributed-rate-limiter` populated, detached at `2789431`.
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <version>${spring-boot.version}</version>
+                    <!-- This project uses a custom aggregator rather than
+                         spring-boot-starter-parent, so nothing binds the repackage
+                         goal automatically. Bound once here; every module that
+                         declares the plugin inherits it and produces a runnable jar.
+                         Without this, mvn package yields a jar that fails at runtime
+                         with "no main manifest attribute". -->
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>
