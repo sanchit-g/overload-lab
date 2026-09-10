@@ -2092,7 +2092,7 @@ git commit -m "feat(capture): Prometheus range capture to committed series and P
 - Create: `stages/s0.env` … `stages/s4.env`
 - Create: `scripts/run-stage.sh`
 
-- [ ] **Step 1: Create the five stage files**
+- [x] **Step 1: Create the five stage files**
 
 Stages are cumulative. `s1`–`s4` are defined now so the harness is complete; Phase 1 implements and measures them.
 
@@ -2160,7 +2160,7 @@ OVERLOAD_ADMISSION_WINDOW=1
 OVERLOAD_BREAKER_ENABLED=true
 ```
 
-- [ ] **Step 2: Create `scripts/run-stage.sh`**
+- [x] **Step 2: Create `scripts/run-stage.sh`**
 
 The preflight assertion is the guard that makes every number in RESULTS.md citable. A stage flag that silently fails to take effect would produce a confident, wrong "no measurable delta" — the single worst outcome this project can have.
 
@@ -2245,7 +2245,7 @@ docker run --rm --network overload-lab \
 echo "==> done: $OUTDIR"
 ```
 
-- [ ] **Step 3: Make it executable and run stage s0 below capacity**
+- [x] **Step 3: Make it executable and run stage s0 below capacity**
 
 ```bash
 chmod +x scripts/run-stage.sh
@@ -2257,7 +2257,7 @@ ls -la results/s0-fragile-A-rate10/ docs/img/
 
 Expected: preflight prints `preflight OK` with all four `False`; `k6-summary.json`, `series.json`, `preflight.json` written; four PNGs in `docs/img/`.
 
-- [ ] **Step 4: Verify the preflight actually catches a mismatch**
+- [x] **Step 4: Verify the preflight actually catches a mismatch**
 
 This proves the guard works rather than assuming it.
 
@@ -2267,7 +2267,7 @@ OVERLOAD_QUEUE_BOUNDED=true ./scripts/run-stage.sh s0 || echo "EXPECTED FAILURE 
 
 Expected: the run aborts with `PREFLIGHT FAILED` before any load is generated. Then re-run Step 3 to leave the stack in a known state.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stages scripts/run-stage.sh
