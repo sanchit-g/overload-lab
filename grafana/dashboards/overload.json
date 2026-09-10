@@ -1,0 +1,96 @@
+{
+  "uid": "overload-lab",
+  "title": "Overload Lab",
+  "tags": ["overload"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Latency: edge vs end-to-end (p50/p99/p999)",
+      "description": "The edge lies. HTTP latency is flat because /events returns 202 on enqueue; e2e is the truth.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{uri=\"/events\"}[10s])) by (le))", "legendFormat": "edge p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=\"/events\"}[10s])) by (le))", "legendFormat": "edge p99" },
+        { "refId": "C", "expr": "histogram_quantile(0.50, sum(rate(overload_event_e2e_seconds_bucket[10s])) by (le))", "legendFormat": "e2e p50" },
+        { "refId": "D", "expr": "histogram_quantile(0.99, sum(rate(overload_event_e2e_seconds_bucket[10s])) by (le))", "legendFormat": "e2e p99" },
+        { "refId": "E", "expr": "histogram_quantile(0.999, sum(rate(overload_event_e2e_seconds_bucket[10s])) by (le))", "legendFormat": "e2e p999" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Accepted throughput (events/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(overload_events_accepted_total[10s]))", "legendFormat": "accepted" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Rejections by reason (events/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 40, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(overload_events_rejected_total[10s]))", "legendFormat": "{{reason}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Queue depth",
+      "description": "At s0 this grows linearly at (arrival - drain) until the heap is gone.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "overload_queue_depth", "legendFormat": "depth" },
+        { "refId": "B", "expr": "overload_queue_capacity > 0", "legendFormat": "capacity" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Worker threads active",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "executor_active_threads{name=\"overload.workers\"}", "legendFormat": "active" },
+        { "refId": "B", "expr": "executor_pool_size_threads{name=\"overload.workers\"}", "legendFormat": "pool size" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Connection pools: Hikari vs HTTP",
+      "description": "Hikari pending pegs at (workers - poolSize) and stays flat. Postgres is idle. The pool is the constraint, not the database.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "hikaricp_connections_active{pool=\"gateway-pool\"}", "legendFormat": "hikari active" },
+        { "refId": "B", "expr": "hikaricp_connections_pending{pool=\"gateway-pool\"}", "legendFormat": "hikari pending" },
+        { "refId": "C", "expr": "overload_http_pool_leased", "legendFormat": "http leased" },
+        { "refId": "D", "expr": "overload_http_pool_pending", "legendFormat": "http pending" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "description": "The actual cause of death at s0.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "heap used" },
+        { "refId": "B", "expr": "sum(jvm_memory_max_bytes{area=\"heap\"})", "legendFormat": "heap max" }
+      ]
+    }
+  ]
+}
