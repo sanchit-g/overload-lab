@@ -6,6 +6,10 @@ const BASE = __ENV.BASE_URL || 'http://localhost:8080';
 const PAD = 'x'.repeat(PAYLOAD_BYTES);
 
 export const options = {
+  // k6's default summaryTrendStats omits p(99) entirely (avg,min,med,max,p90,p95).
+  // This project measures p50/p99/p999, and RESULTS.md commits client-side percentiles
+  // alongside Prometheus server-side ones, so they must be requested explicitly.
+  summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(99)', 'p(99.9)', 'max'],
   discardResponseBodies: true,
   scenarios: {
     knee: {

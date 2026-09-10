@@ -15,6 +15,10 @@ const failed = new Counter('batches_failed');
 const PAD = 'x'.repeat(PAYLOAD_BYTES);
 
 export const options = {
+  // k6's default summaryTrendStats omits p(99) entirely (avg,min,med,max,p90,p95).
+  // This project measures p50/p99/p999, and RESULTS.md commits client-side percentiles
+  // alongside Prometheus server-side ones, so they must be requested explicitly.
+  summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(99)', 'p(99.9)', 'max'],
   discardResponseBodies: true,
   scenarios: {
     steady: {
@@ -24,7 +28,7 @@ export const options = {
       duration: DURATION,
       preAllocatedVUs: Math.max(50, RATE * 2),
       maxVUs: Math.max(500, RATE * 20),
-      gracefulStop: '30s',
+gracefulStop: '30s',
     },
   },
 };
@@ -49,6 +53,14 @@ export default function () {
 }
 
 export function handleSummary(data) {
+  // A Counter that never received a data point is omitted from the summary entirely
+  // rather than reported as 0. Seed the known ones so every committed run has the
+  // same shape and "absent" never has to be interpreted as "zero" downstream.
+  for (const k of ['batches_accepted', 'batches_shed', 'batches_failed']) {
+    if (!data.metrics[k]) {
+      data.metrics[k] = { type: 'counter', contains: 'default', values: { count: 0, rate: 0 } };
+    }
+  }
   const out = __ENV.SUMMARY_OUT || 'summary.json';
   return { [out]: JSON.stringify(data, null, 2), stdout: '' };
 }
