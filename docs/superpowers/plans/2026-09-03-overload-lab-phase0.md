@@ -1635,7 +1635,7 @@ git commit -m "feat(obs): Prometheus at 1s scrape and provisioned Grafana"
 **Files:**
 - Create: `grafana/dashboards/overload.json`
 
-- [ ] **Step 1: Create `grafana/dashboards/overload.json`**
+- [x] **Step 1: Create `grafana/dashboards/overload.json`**
 
 Panel 1 places both latency families on one axis. That single panel carries the stage-0 argument: the edge line stays flat and healthy while the end-to-end line climbs without bound.
 
@@ -1738,7 +1738,7 @@ Panel 1 places both latency families on one axis. That single panel carries the 
 }
 ```
 
-- [ ] **Step 2: Verify the dashboard provisions**
+- [x] **Step 2: Verify the dashboard provisions**
 
 ```bash
 docker compose -f compose/obs.yml restart grafana
@@ -1748,7 +1748,7 @@ curl -s -u admin:admin http://localhost:3000/api/dashboards/uid/overload-lab | p
 
 Expected: `Overload Lab 7 panels`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add grafana/dashboards/overload.json
