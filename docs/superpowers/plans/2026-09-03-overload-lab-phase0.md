@@ -1526,7 +1526,7 @@ git commit -m "build: application compose stack with explicit CPU and memory lim
 - Create: `grafana/provisioning/datasources/prometheus.yml`
 - Create: `grafana/provisioning/dashboards/dashboards.yml`
 
-- [ ] **Step 1: Create `prometheus/prometheus.yml`**
+- [x] **Step 1: Create `prometheus/prometheus.yml`**
 
 The 1-second interval is load-bearing. At Prometheus's default 15s, a per-second admission sawtooth is averaged into a flat line and you would conclude the rate limiter was smooth. Do not raise this.
 
@@ -1546,7 +1546,7 @@ scrape_configs:
         refresh_interval: 5s
 ```
 
-- [ ] **Step 2: Create `compose/obs.yml`**
+- [x] **Step 2: Create `compose/obs.yml`**
 
 ```yaml
 name: overload-lab-obs
@@ -1582,7 +1582,7 @@ services:
     depends_on: [prometheus]
 ```
 
-- [ ] **Step 3: Create `grafana/provisioning/datasources/prometheus.yml`**
+- [x] **Step 3: Create `grafana/provisioning/datasources/prometheus.yml`**
 
 ```yaml
 apiVersion: 1
@@ -1595,7 +1595,7 @@ datasources:
     editable: false
 ```
 
-- [ ] **Step 4: Create `grafana/provisioning/dashboards/dashboards.yml`**
+- [x] **Step 4: Create `grafana/provisioning/dashboards/dashboards.yml`**
 
 ```yaml
 apiVersion: 1
@@ -1610,7 +1610,7 @@ providers:
       path: /var/lib/grafana/dashboards
 ```
 
-- [ ] **Step 5: Verify Prometheus is scraping**
+- [x] **Step 5: Verify Prometheus is scraping**
 
 ```bash
 docker compose -f compose/obs.yml up -d
@@ -1621,7 +1621,7 @@ curl -s 'http://localhost:9091/api/v1/query?query=overload_queue_depth' | python
 
 Expected: one target with health `up`; the query returns a result with value `0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add prometheus compose/obs.yml grafana/provisioning
