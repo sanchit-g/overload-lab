@@ -81,16 +81,176 @@ capacity  ~=  20 / 0.028  ~=  700 events/s  ~=  35 rps at batch 20
 
 ---
 
-## Stage s0 -- fragile
+---
 
-_Pending Task 20._
+# Results
 
-| Multiple | Offered (ev/s) | Accepted (ev/s) | Completed (ev/s) | Edge p99 | e2e p99 | Queue slope | Time to death |
-|---|---|---|---|---|---|---|---|
-| 1x | | | | | | | |
-| 2x | | | | | | | |
-| 4x | | | | | | | |
+## 1. Finding the knee
 
-## Stages s1-s4
+`k6/knee.js` ramps 5 -> 80 rps over 10 minutes. Each row averages one 100s ramp stage.
 
-Phase 1.
+| target | edge p99 | e2e p99 | accepted ev/s | completed ev/s | queue depth |
+|---|---|---|---|---|---|
+| 10 rps | 15.3 ms | 51.3 ms | 141 | 140 | 0 |
+| 20 rps | 6.8 ms | 45.2 ms | 291 | 291 | 0 |
+| 30 rps | 4.5 ms | 45.7 ms | 491 | 491 | 0 |
+| 40 rps | 3.2 ms | **231.8 ms** | 691 | 686 | 717 |
+| 55 rps | 2.2 ms | **9,644 ms** | 937 | 747 | 20,785 |
+| 80 rps | 2.5 ms | **39,118 ms** | 1,328 | 744 | 81,148 |
+
+![knee latency](docs/img/knee-latency.png)
+
+**Capacity = ~754 events/s** (~37 rps at batch 20). Read the `completed` column: 491, 686,
+747, 744. It hits a wall and stays there regardless of what is offered. Predicted 700 from
+Little's Law -- 7% under.
+
+**The knee is at ~37-40 rps, i.e. at capacity, not below it.** Latency is flat at ~45ms
+through 30 rps and then goes vertical.
+
+**The edge got faster as the system collapsed.** Edge p99 fell 6.8ms -> 2.2ms while offered
+load quadrupled and end-to-end latency rose 870x. The client-facing metric did not merely
+fail to warn -- it improved.
+
+## 2. Stage s0 under overload
+
+Multiples of the measured knee (37 rps). Medians over the measurement window.
+
+| | offered ev/s | accepted | completed | edge p99 | e2e p99 | queue slope | queue peak | outcome |
+|---|---|---|---|---|---|---|---|---|
+| **1x** (37 rps) | 740 | 740 | **740** | 2.3 ms | 71 ms | 0/s | 113 | survived 360s |
+| **2x** (74 rps) | 1,480 | 1,480 | **716** | 1.9 ms | 91,226 ms | 762/s | 181,731 | **died at 227s** |
+| **4x** (148 rps) | 2,960 | 2,960 | **553** | 30.7 ms | 48,429 ms | 2,360/s | 169,576 | **died at 64s** |
+
+Both deaths were `exit=3, oom=false` -- `-XX:+ExitOnOutOfMemoryError` on JVM heap exhaustion,
+not a kernel OOM-kill of the container. The clean failure path.
+
+**Accepted equals offered exactly at every load**, including 4x. The gateway returned 202 to
+100% of requests right up to the moment it died. The unbounded queue accepts everything.
+
+![2x latency](docs/img/s0-fragile-A-rate74-latency.png)
+![2x queue and heap](docs/img/s0-fragile-A-rate74-queue-heap.png)
+![2x pools](docs/img/s0-fragile-A-rate74-pools.png)
+
+## 3. Which resource saturated, and how the rest followed
+
+**HikariCP was the binding constraint, and Postgres was never the problem.** During the ramp,
+at 80 rps:
+
+```
+hikaricp_connections_active    20.0   <- pegged at max
+hikaricp_connections_pending   45.0   <- 45 workers blocked, FLAT
+hikaricp_connections_idle       0.0
+overload_http_pool_leased      19.0   <- never approaches its max of 32
+overload_http_pool_pending      0.0   <- nobody ever waits
+```
+
+The causal chain:
+
+1. A worker holds a DB connection across a ~25ms downstream call. Capacity is therefore
+   `20 connections / 26.5ms` = **~754 events/s**, set by a pool rather than by the database.
+2. Above that, the unbounded queue absorbs the excess at exactly `offered - 754` per second.
+3. Queue depth sets end-to-end latency (`depth / drain rate`) and heap (~1.2KB per event).
+4. Heap reaches 256MB; the JVM exits.
+5. Postgres stayed near-idle throughout. The HTTP pool was never contended.
+
+`http_leased ~= hikari_active` is structural, not coincidence: a worker cannot reach the HTTP
+call without already holding a DB connection, so HTTP leasing is capped at 20 by a pool sized
+32. Had we accepted HttpClient 5's default of 5 per route, the HTTP pool would have been the
+bottleneck and every graph here would have measured the wrong thing.
+
+**Saturation itself does not get worse.** `hikari_pending` pegs at 45 (64 workers - 20
+connections, plus the health check's validation query) and stays there whether you are at 2x
+or 20x. An alert on `pending > 40` fires once and then reports nothing about how bad things
+are getting. The lines that track severity are queue depth and heap.
+
+## 4. Falsifiable cross-checks
+
+**Drain rate recovered from the queue graph alone.** `drain = offered - queue slope`:
+
+| | offered | queue slope | implied drain | measured completed |
+|---|---|---|---|---|
+| 1x | 740 | 0 | 740 | 740 |
+| 2x | 1,480 | 762 | 718 | 716 |
+| 4x | 2,960 | 2,360 | 600 | 553 |
+
+At 1x and 2x this recovers capacity to within 0.3%. **You can derive a system's true capacity
+from its queue depth graph knowing nothing about its pools.**
+
+**Heap per queued event:** 1,173 B (2x) and 1,253 B (4x) against 1,150 B predicted.
+
+**Rows written match completions, not acceptances.** 2x wrote 169,024 rows in 237s = 713/s,
+against a measured completion rate of 716/s. The 763,000 events accepted but never written
+existed only as queue depth and heap.
+
+## 5. Where the model held, and where it broke
+
+| Prediction | Predicted | Measured | Verdict |
+|---|---|---|---|
+| capacity | 700 ev/s | 754 ev/s | correct, 7% under |
+| Hikari active / pending | 20 / 44 | 20 / 45 | correct |
+| HTTP pool contention | none | none, leased 19/32 | correct |
+| Postgres CPU | low | low, never a constraint | correct |
+| accepted tracks offered | yes | exactly, at all loads | correct |
+| edge p99 flat | flat 10-20ms | flat, and *falling* | correct, understated |
+| heap per event | 1,150 B | ~1,200 B | correct |
+| time to death, 2x | 243s | 227s | 7% over |
+| time to death, 4x | 78s | 64s | 18% over |
+| **knee position** | **28-30 rps, below capacity** | **~37-40 rps, at capacity** | **wrong** |
+| **1x stability** | marginal, may degrade | stable at 98% utilisation | **wrong** |
+
+### The knee prediction was wrong, and that is the most useful result here
+
+The prediction came from single-server queueing theory: `wait = service / (1 - utilisation)`,
+which blows up gradually and should have produced measurable latency growth well before
+capacity. It is where the familiar "keep utilisation under 70-80%" rule comes from.
+
+That formula is for **one** server. This system has **twenty** -- the Hikari pool. With c
+parallel servers the probability that all are simultaneously busy stays low much closer to
+saturation, so latency stays flat and then goes vertical. Measured: e2e p99 was 45.2ms at
+~53% utilisation and 45.7ms at ~80% -- no degradation at all where the single-server model
+predicted roughly 160ms.
+
+The operational consequence inverts the usual advice:
+
+> A high-concurrency system gives you more usable capacity **and almost no warning before it
+> collapses.** This one ran stably at 98% utilisation. It also went from 45ms to 39 seconds
+> across a 37% increase in load. You cannot watch latency creep up and react, because there
+> is no creep.
+
+### Recalibrating from contaminated data made the prediction worse
+
+Mid-experiment, heap-per-event was recalibrated from the ramp run: 210MB of heap at 81,201
+queued events implied **2,029 B/event**, and the death predictions were revised down to 138s
+and 44s. The clean runs measured ~1,200 B/event, and the *original* 1,150 B estimate produced
+much better predictions (243s vs 227s measured) than the recalibration (138s).
+
+The ramp reading was contaminated: `jvm_memory_used_bytes` includes uncollected garbage, and
+a 10-minute ramp accumulates plenty. A single-load run gives a much cleaner retained size.
+**Recalibrating from a dirtier measurement made the model worse.**
+
+### Two findings that were not predicted at all
+
+**Capacity itself degrades under extreme overload.** Completion rate fell from 754/s (1x and
+2x) to **553/s at 4x** -- a 27% loss. GC pressure from a heap filling in 64 seconds steals CPU
+from the worker threads. Overload does not merely queue work; past a point it makes the system
+slower, which deepens the deficit, which fills the heap faster. That is the death spiral.
+
+**The edge eventually tells the truth, far too late.** Edge p99 was 1.9ms at 2x but 30.7ms at
+4x -- 16x worse. The client-facing metric finally showed distress, but only because GC was
+degrading everything, and only in the last seconds of a 64-second life.
+
+## 6. What this says about the fragile design
+
+The unbounded queue added **no capacity whatsoever**. Completion rate was ~754/s at 1x, 716/s
+at 2x and 553/s at 4x -- flat, then worse. What the queue changed was the *consequence* of
+exceeding it: instead of refusing work it could not do, the service accepted 100% of it,
+reported success, converted the excess into latency debt and heap, and died.
+
+Every conventional signal looked fine. HTTP latency was flat and falling. Both connection
+pools were stable. Postgres was idle. Worker threads were fully utilised, which reads as
+healthy. The only two moving lines were queue depth and heap -- neither of which is on a
+default Spring Boot dashboard.
+
+**Stages s1-s4 in Phase 1** reintroduce protections one at a time and measure what each is
+actually worth against this baseline.
+

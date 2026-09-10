@@ -4,5 +4,5 @@ target/
 *.iml
 .DS_Store
 results/**/raw/
-docs/img/*.png
-!docs/img/.gitkeep
+# Generated PNGs ARE committed: RESULTS.md embeds them and they are the
+# deliverable. They stay regenerable -- re-run the stage to reproduce.
