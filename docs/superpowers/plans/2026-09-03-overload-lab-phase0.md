@@ -1099,7 +1099,7 @@ git commit -m "feat(gateway): event writer holding a DB connection across the do
 **Files:**
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/IngestQueue.java`
 
-- [ ] **Step 1: Create `IngestQueue.java`**
+- [x] **Step 1: Create `IngestQueue.java`**
 
 The unbounded branch is stage s0. The bounded branch is one conditional and is included now so the queue component is complete; Phase 1 measures it.
 
@@ -1193,7 +1193,7 @@ public class IngestQueue {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/ingest/IngestQueue.java
