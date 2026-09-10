@@ -1005,7 +1005,7 @@ git commit -m "feat(gateway): pooled HTTP client with stage-controlled timeouts"
 **Files:**
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/EventWriter.java`
 
-- [ ] **Step 1: Create `EventWriter.java`**
+- [x] **Step 1: Create `EventWriter.java`**
 
 This is the entire point of the lab. The connection is acquired, used, and then **held across a network call** before commit. Capacity becomes `hikariMax / downstreamLatency`, governed by a pool that has nothing to do with how fast Postgres is. Do not "fix" this by moving the HTTP call outside the try-with-resources; Phase 1 measures it as-is.
 
@@ -1086,7 +1086,7 @@ public class EventWriter {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/ingest/EventWriter.java
