@@ -913,7 +913,7 @@ git commit -m "feat(gateway): ingest metrics with rejection reasons and e2e time
 **Files:**
 - Create: `gateway/src/main/java/com/overloadlab/gateway/config/DownstreamClientConfig.java`
 
-- [ ] **Step 1: Create `DownstreamClientConfig.java`**
+- [x] **Step 1: Create `DownstreamClientConfig.java`**
 
 Two things matter here. The pool is sized **above** Hikari's max so it never becomes a second constraint — at most 20 workers are ever past the connection gate. And at s0 the timeouts are not merely long, they are an hour: a worker that calls a black-holed downstream parks effectively forever, which is exactly the failure being demonstrated.
 
@@ -991,7 +991,7 @@ public class DownstreamClientConfig {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/config/DownstreamClientConfig.java
