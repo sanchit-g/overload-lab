@@ -1319,7 +1319,7 @@ git commit -m "feat(gateway): POST /events with all-or-nothing batch admission"
 **Files:**
 - Create: `gateway/Dockerfile`
 
-- [ ] **Step 1: Create `gateway/Dockerfile`**
+- [x] **Step 1: Create `gateway/Dockerfile`**
 
 The submodule is built and installed inside the image, so a clean clone needs no local `mvn install` and no Maven Central publication. `-pl rate-limiter-spring-boot-starter -am` skips the starter's demo module.
 
@@ -1345,7 +1345,7 @@ ENV JAVA_OPTS="-Xmx256m -XX:+ExitOnOutOfMemoryError"
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
 ```
 
-- [ ] **Step 2: Verify the image builds**
+- [x] **Step 2: Verify the image builds**
 
 ```bash
 docker build -f gateway/Dockerfile -t overload-lab/gateway:dev .
@@ -1353,7 +1353,38 @@ docker build -f gateway/Dockerfile -t overload-lab/gateway:dev .
 
 Expected: build succeeds. The starter install step must print no errors.
 
-- [ ] **Step 3: Commit**
+**Step 2b: Boot smoke test (addition beyond the plan)**
+
+The gateway had never actually been started before this task, only compiled and packaged. Its `application.yml` resolves `postgres`, `redis`, and `downstream-sim` by hostname, so this test runs everything on one throwaway Docker network using exactly those container names as network aliases, as a first real boot check before the compose stack (Task 14) exists.
+
+```bash
+docker rm -f gw-smoke pg-smoke redis-smoke sim-smoke 2>/dev/null
+docker network rm overload-smoke 2>/dev/null
+docker network create overload-smoke
+
+docker run -d --name pg-smoke --network overload-smoke --network-alias postgres \
+  -e POSTGRES_DB=overload -e POSTGRES_USER=overload -e POSTGRES_PASSWORD=overload \
+  -v "$PWD/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro" postgres:16-alpine
+docker run -d --name redis-smoke --network overload-smoke --network-alias redis redis:7-alpine
+docker run -d --name sim-smoke --network overload-smoke --network-alias downstream-sim \
+  overload-lab/downstream-sim:dev
+
+for i in $(seq 1 30); do docker exec pg-smoke pg_isready -U overload >/dev/null 2>&1 && break; sleep 1; done
+
+docker run -d --name gw-smoke --network overload-smoke -p 8080:8080 overload-lab/gateway:dev
+for i in $(seq 1 60); do curl -sf localhost:8080/actuator/health >/dev/null 2>&1 && break; sleep 2; done
+```
+
+Then verify: `/actuator/health` is `UP`; `/actuator/overload` shows all four protections (`timeouts`, `boundedQueue`, `admission`, `breaker`) `false` at stage s0, with `hikariMaxPoolSize: 20`; `cat /proc/1/cmdline` inside the container shows `-Xmx256m -XX:+ExitOnOutOfMemoryError` actually applied; `POST /events` with a non-empty batch returns `202` and the row lands in Postgres (`SELECT count(*) FROM events;`); `POST /events` with an empty batch returns `400`; and every metric name the Grafana dashboard (Task 16) and capture script (Task 18) depend on is present in `/actuator/prometheus`: `overload_events_accepted_total`, `overload_events_rejected_total`, `overload_event_e2e_seconds_bucket`, `overload_event_e2e_seconds_count`, `overload_queue_depth`, `overload_queue_capacity`, `executor_active_threads`, `hikaricp_connections_active`, `hikaricp_connections_pending`, `overload_http_pool_leased`, `overload_http_pool_pending`, `overload_http_pool_available`, `jvm_memory_used_bytes`.
+
+Ran once during Task 13: all checks passed on the first boot (Spring Boot started in ~2s; health `UP`; all four protections `false`; heap flags confirmed on PID 1; `POST /events` → 202 with the row visible in Postgres; empty batch → 400; all thirteen metric names present). Clean up afterward:
+
+```bash
+docker rm -f gw-smoke pg-smoke redis-smoke sim-smoke
+docker network rm overload-smoke
+```
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateway/Dockerfile
