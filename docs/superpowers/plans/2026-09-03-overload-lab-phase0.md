@@ -1763,7 +1763,7 @@ git commit -m "feat(obs): Grafana dashboard with edge-vs-e2e latency panel"
 - Create: `k6/steady.js`
 - Create: `k6/knee.js`
 
-- [ ] **Step 1: Create `k6/steady.js`**
+- [x] **Step 1: Create `k6/steady.js`**
 
 `constant-arrival-rate` is an **open** model and is not negotiable. A closed model (fixed VUs waiting on responses) self-throttles the moment the system slows, which would hide the entire phenomenon this repo exists to demonstrate.
 
@@ -1824,7 +1824,7 @@ export function handleSummary(data) {
 }
 ```
 
-- [ ] **Step 2: Create `k6/knee.js`**
+- [x] **Step 2: Create `k6/knee.js`**
 
 ```javascript
 import http from 'k6/http';
@@ -1873,7 +1873,7 @@ export function handleSummary(data) {
 }
 ```
 
-- [ ] **Step 3: Smoke test at a rate well below capacity**
+- [x] **Step 3: Smoke test at a rate well below capacity**
 
 ```bash
 mkdir -p results/smoke
@@ -1887,7 +1887,7 @@ print('http p99 ms:', round(d['metrics']['http_req_duration']['values']['p(99)']
 
 Expected: ~150 batches accepted, no shed, p99 in the low tens of milliseconds.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add k6
