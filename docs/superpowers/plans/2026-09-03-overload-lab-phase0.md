@@ -1920,7 +1920,7 @@ git commit -m "feat(k6): open-model steady and knee-finding load scripts"
 
 Everything in RESULTS.md must be regenerable by re-running a stage. Capture runs in a container so a clean clone needs no host Python dependencies.
 
-- [ ] **Step 1: Create `tools/capture/Dockerfile`**
+- [x] **Step 1: Create `tools/capture/Dockerfile`**
 
 ```dockerfile
 FROM python:3.12-slim
@@ -1930,7 +1930,7 @@ COPY capture.py .
 ENTRYPOINT ["python", "/app/capture.py"]
 ```
 
-- [ ] **Step 2: Create `tools/capture/capture.py`**
+- [x] **Step 2: Create `tools/capture/capture.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -2065,7 +2065,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 3: Build the capture image**
+- [x] **Step 3: Build the capture image**
 
 ```bash
 docker build -t overload-lab/capture:dev tools/capture
@@ -2073,7 +2073,7 @@ docker build -t overload-lab/capture:dev tools/capture
 
 Expected: image builds.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tools/capture
