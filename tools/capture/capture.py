@@ -23,6 +23,10 @@ QUERIES = {
     "accepted":      'sum(rate(overload_events_accepted_total[10s]))',
     "rejected":      'sum by (reason) (rate(overload_events_rejected_total[10s]))',
     "queue_depth":   'overload_queue_depth',
+    # Recorded for provenance, not plotted: the sentinel -1 means "unbounded queue",
+    # which makes each run self-describing without cross-referencing its stage env file.
+    # Deliberately absent from the charts -- -1 cannot sit on a log-scaled axis.
+    "queue_capacity":'overload_queue_capacity',
     "workers_active":'executor_active_threads{name="overload.workers"}',
     "hikari_active": 'hikaricp_connections_active{pool="gateway-pool"}',
     "hikari_pending":'hikaricp_connections_pending{pool="gateway-pool"}',
