@@ -1207,7 +1207,7 @@ git commit -m "feat(gateway): worker pool with flag-driven bounded/unbounded que
 **Files:**
 - Create: `gateway/src/main/java/com/overloadlab/gateway/ingest/EventsController.java`
 
-- [ ] **Step 1: Create `EventsController.java`**
+- [x] **Step 1: Create `EventsController.java`**
 
 Batch admission is all-or-nothing: a partially-accepted batch would make accepted-throughput accounting ambiguous, and ambiguity in the numbers is the one thing this repo cannot afford. The pre-check races, so `submit()` returning false is still handled as a backstop.
 
@@ -1293,7 +1293,7 @@ public class EventsController {
 }
 ```
 
-- [ ] **Step 2: Build the gateway**
+- [x] **Step 2: Build the gateway**
 
 The submodule must be installed to the local repo first, since `rate-limiter-spring-boot-starter` is not on Maven Central.
 
@@ -1305,7 +1305,7 @@ ls -la gateway/target/gateway-0.1.0.jar
 
 Expected: both builds succeed; the jar exists.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateway/src/main/java/com/overloadlab/gateway/ingest/EventsController.java
