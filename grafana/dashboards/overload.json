@@ -51,8 +51,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "overload_queue_depth", "legendFormat": "depth" },
-        { "refId": "B", "expr": "overload_queue_capacity > 0", "legendFormat": "capacity" }
+        { "refId": "A", "expr": "sum(overload_queue_depth)", "legendFormat": "depth" },
+        { "refId": "B", "expr": "max(overload_queue_capacity) > 0", "legendFormat": "capacity" }
       ]
     },
     {
@@ -62,8 +62,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "executor_active_threads{name=\"overload.workers\"}", "legendFormat": "active" },
-        { "refId": "B", "expr": "executor_pool_size_threads{name=\"overload.workers\"}", "legendFormat": "pool size" }
+        { "refId": "A", "expr": "sum(executor_active_threads{name=\"overload.workers\"})", "legendFormat": "active" },
+        { "refId": "B", "expr": "sum(executor_pool_size_threads{name=\"overload.workers\"})", "legendFormat": "pool size" }
       ]
     },
     {
@@ -74,10 +74,10 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "hikaricp_connections_active{pool=\"gateway-pool\"}", "legendFormat": "hikari active" },
-        { "refId": "B", "expr": "hikaricp_connections_pending{pool=\"gateway-pool\"}", "legendFormat": "hikari pending" },
-        { "refId": "C", "expr": "overload_http_pool_leased", "legendFormat": "http leased" },
-        { "refId": "D", "expr": "overload_http_pool_pending", "legendFormat": "http pending" }
+        { "refId": "A", "expr": "sum(hikaricp_connections_active{pool=\"gateway-pool\"})", "legendFormat": "hikari active" },
+        { "refId": "B", "expr": "sum(hikaricp_connections_pending{pool=\"gateway-pool\"})", "legendFormat": "hikari pending" },
+        { "refId": "C", "expr": "sum(overload_http_pool_leased)", "legendFormat": "http leased" },
+        { "refId": "D", "expr": "sum(overload_http_pool_pending)", "legendFormat": "http pending" }
       ]
     },
     {

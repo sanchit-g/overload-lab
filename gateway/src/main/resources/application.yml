@@ -56,8 +56,11 @@ management:
       show-details: always
   metrics:
     tags:
+      # No 'instance' tag here. HOSTNAME is the container ID, so every --force-recreate
+      # minted a new tag value, a new time series, and a new legend entry -- 11 of them
+      # across one session. Prometheus already supplies its own 'instance' label from the
+      # scrape target, which is what distinguishes replicas in the multi-instance profile.
       application: gateway
-      instance: ${HOSTNAME:local}
     distribution:
       percentiles-histogram:
         http.server.requests: true

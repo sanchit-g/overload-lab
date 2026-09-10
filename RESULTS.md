@@ -182,6 +182,32 @@ from its queue depth graph knowing nothing about its pools.**
 against a measured completion rate of 716/s. The 763,000 events accepted but never written
 existed only as queue depth and heap.
 
+### Two methodological caveats on these runs
+
+**The runs were not independent.** They executed back-to-back against a table that kept
+growing: the ramp started empty, 1x started at 395k rows, 2x at 695k, 4x at 864k. Completion
+rate declined monotonically -- 754, 740, 716, 553 ev/s. Index maintenance on a growing table
+plausibly explains part of that: the table grew 76% between the 1x and 2x runs for a 3.2%
+throughput loss, so the 24% growth before the 4x run should cost roughly 1%, leaving ~22% for
+GC pressure. The GC conclusion stands, but the design did not isolate it. A rigorous re-run
+should truncate `events` between runs, or run the multiples in reverse order.
+
+**Heap-per-event was recalibrated mid-experiment, and the recalibration was worse.** It was
+used only to size the observation windows, never to compute a measurement, and every window
+proved long enough to contain the actual death -- so no result here is contaminated. But had
+the window been set to the (too short) predicted death time, the 2x run would have ended
+before dying and produced a truncated result.
+
+**Metric-series churn (fixed after these runs).** `application.yml` tagged metrics with
+`instance: ${HOSTNAME:local}`, which inside a container is the container ID -- so every
+gateway recreation minted a new time series. Across one session that produced 11 duplicate
+series per metric and 11 duplicate legend entries on the Grafana panels. It did not affect
+any measurement, because `run-stage.sh` records the start timestamp only after recreating the
+gateway and warming up, so each capture window contains exactly one container lifetime; every
+committed `series.json` was verified to hold exactly one series per query. The tag has since
+been removed (Prometheus supplies its own `instance` label from the scrape target) and the
+dashboard and capture queries now aggregate with `sum()`.
+
 ## 5. Where the model held, and where it broke
 
 | Prediction | Predicted | Measured | Verdict |

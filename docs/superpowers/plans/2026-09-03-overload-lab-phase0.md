@@ -588,8 +588,11 @@ management:
       show-details: always
   metrics:
     tags:
+      # No 'instance' tag here. HOSTNAME is the container ID, so every --force-recreate
+      # minted a new tag value, a new time series, and a new legend entry -- 11 of them
+      # across one session. Prometheus already supplies its own 'instance' label from the
+      # scrape target, which is what distinguishes replicas in the multi-instance profile.
       application: gateway
-      instance: ${HOSTNAME:local}
     distribution:
       percentiles-histogram:
         http.server.requests: true
@@ -1963,16 +1966,16 @@ QUERIES = {
     # not a paragraph.
     "completed":     'sum(rate(overload_event_e2e_seconds_count[10s]))',
     "rejected":      'sum by (reason) (rate(overload_events_rejected_total[10s]))',
-    "queue_depth":   'overload_queue_depth',
+    "queue_depth":   'sum(overload_queue_depth)',
     # Recorded for provenance, not plotted: the sentinel -1 means "unbounded queue",
     # which makes each run self-describing without cross-referencing its stage env file.
     # Deliberately absent from the charts -- -1 cannot sit on a log-scaled axis.
-    "queue_capacity":'overload_queue_capacity',
-    "workers_active":'executor_active_threads{name="overload.workers"}',
-    "hikari_active": 'hikaricp_connections_active{pool="gateway-pool"}',
-    "hikari_pending":'hikaricp_connections_pending{pool="gateway-pool"}',
-    "http_leased":   'overload_http_pool_leased',
-    "http_pending":  'overload_http_pool_pending',
+    "queue_capacity":'max(overload_queue_capacity)',
+    "workers_active":'sum(executor_active_threads{name="overload.workers"})',
+    "hikari_active": 'sum(hikaricp_connections_active{pool="gateway-pool"})',
+    "hikari_pending":'sum(hikaricp_connections_pending{pool="gateway-pool"})',
+    "http_leased":   'sum(overload_http_pool_leased)',
+    "http_pending":  'sum(overload_http_pool_pending)',
     "heap_used":     'sum(jvm_memory_used_bytes{area="heap"})',
 }
 
