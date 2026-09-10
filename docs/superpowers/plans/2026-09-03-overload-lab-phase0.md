@@ -201,9 +201,6 @@ git commit -m "chore: scaffold overload-lab with pinned rate limiter submodule"
 ```java
 package com.overloadlab.sim;
 
-import lombok.extern.slf4j.Slf4j;
-import lombok.extern.slf4j.Slf4j;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -244,6 +241,7 @@ public record Knobs(long latencyMs, long jitterMs, double failureRate, String mo
 ```java
 package com.overloadlab.sim;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -1013,6 +1011,7 @@ This is the entire point of the lab. The connection is acquired, used, and then 
 package com.overloadlab.gateway.ingest;
 
 import com.overloadlab.gateway.config.OverloadProperties;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -1113,6 +1112,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ArrayBlockingQueue;
