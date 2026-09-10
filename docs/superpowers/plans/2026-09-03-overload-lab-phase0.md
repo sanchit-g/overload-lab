@@ -2178,6 +2178,10 @@ BATCH="${BATCH:-20}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# The stage file defines the stage, and deliberately WINS over anything the caller
+# exported: a stray environment variable must not be able to silently alter a published
+# measurement. Consequence: you cannot fake a preflight mismatch from the outside, which
+# is what PREFLIGHT_SELFTEST below exists for.
 # shellcheck disable=SC1090
 set -a; source "stages/${STAGE}.env"; set +a
 
@@ -2194,6 +2198,16 @@ for i in $(seq 1 90); do
   sleep 2
   if [ "$i" = 90 ]; then echo "gateway never became healthy"; exit 1; fi
 done
+
+# Exercise the guard on demand. The gateway is already running on this stage's real
+# config; corrupting only the EXPECTATION here proves the assertion aborts the run on a
+# mismatch, without having to misconfigure the service. Tests the assertion path, which
+# is the part that has to work -- a genuine drift (stale image, container that ignored
+# new env, compose that failed to recreate) is caught by the same comparison.
+if [ "${PREFLIGHT_SELFTEST:-}" = "1" ]; then
+  echo "==> PREFLIGHT SELF-TEST: expecting boundedQueue=true against a stage that runs it off"
+  export OVERLOAD_QUEUE_BOUNDED=true
+fi
 
 echo "==> preflight: asserting active protections match ${STAGE}.env"
 curl -sf localhost:8080/actuator/overload > "$OUTDIR/preflight.json"
@@ -2262,10 +2276,12 @@ Expected: preflight prints `preflight OK` with all four `False`; `k6-summary.jso
 This proves the guard works rather than assuming it.
 
 ```bash
-OVERLOAD_QUEUE_BOUNDED=true ./scripts/run-stage.sh s0 || echo "EXPECTED FAILURE - guard works"
+PREFLIGHT_SELFTEST=1 ./scripts/run-stage.sh s0; echo "exit=$?"
 ```
 
-Expected: the run aborts with `PREFLIGHT FAILED` before any load is generated. Then re-run Step 3 to leave the stack in a known state.
+Expected: the run aborts with `PREFLIGHT FAILED (expected, actual): {'boundedQueue': (True, False)}` and a non-zero exit, **before any load is generated**.
+
+Note the env-var route (`OVERLOAD_QUEUE_BOUNDED=true ./scripts/run-stage.sh s0`) does NOT work and must not be used as the test: the script sources the stage file with `set -a`, which overwrites caller-supplied values, so the expectation and the actual both come back `false` and the run passes. That precedence is intentional -- a stage must be fully defined by its file -- which is why the self-test corrupts the expectation from inside instead.
 
 - [x] **Step 5: Commit**
 
