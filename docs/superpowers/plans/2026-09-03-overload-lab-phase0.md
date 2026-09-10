@@ -2383,6 +2383,26 @@ git commit -m "docs: calibrated knee and stage s0 collapse with captured evidenc
 - [ ] `docs/img/` holds regenerated PNGs
 - [ ] RESULTS.md carries the method, the configuration and the s0 table
 
+## Deferred to Phase 1: the HTTP-starved variant
+
+`http-pool-size` is already bound to `${OVERLOAD_HTTP_POOL:32}`, sized above Hikari's 20 so
+the HTTP pool cannot become a second constraint. HttpClient 5's own default is
+`maxTotal=25, defaultMaxPerRoute=5` (verified against httpclient5-5.3.1) -- had we accepted
+it, only 5 workers could be mid-call at once, so only 5 DB connections would ever be held,
+Hikari would never saturate, and capacity would land near 200 events/s instead of 800. The
+graphs would have shown HTTP connections queueing while Hikari sat half idle: a plausible
+result measuring the wrong pool.
+
+Excluding that is experimental control, not a claim that it is unrealistic -- HTTP pool
+exhaustion from default settings is more common in production than the DB variant.
+
+So run it deliberately, as a variant of profile A in Phase 1: `OVERLOAD_HTTP_POOL=5`, same
+code, same load, same dashboards. Expected: Hikari comfortable, HTTP pending climbing,
+capacity ~200 events/s. It costs one stage env file and no code, and it demonstrates the
+method rather than a single finding -- change which pool is scarcest and the collapse
+relocates exactly where the arithmetic said it would. It also answers the sceptical reader
+who assumes the numbers were chosen to produce the desired answer.
+
 ## Not in Phase 0
 
 Timeouts (s1), bounded-queue measurement (s2), admission control via the starter (s3), the
