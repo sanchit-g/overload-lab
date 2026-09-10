@@ -2305,7 +2305,7 @@ git commit -m "feat(harness): stage files and run-stage.sh with preflight assert
 - Create: `RESULTS.md`
 - Modify: `docs/superpowers/specs/2026-09-03-overload-lab-design.md` (calibration table)
 
-- [ ] **Step 1: Run the knee-finding sweep**
+- [x] **Step 1: Run the knee-finding sweep**
 
 ```bash
 docker compose -f compose/app.yml up -d --force-recreate gateway
@@ -2319,7 +2319,7 @@ docker run --rm --network overload-lab -v "$PWD/results:/out" -v "$PWD/docs/img:
   --start "$KNEE_START" --end "$KNEE_END" --step 1 --outdir /out/knee --imgdir /img --label knee
 ```
 
-- [ ] **Step 2: Compute the knee from the captured series**
+- [x] **Step 2: Compute the knee from the captured series**
 
 Applying the spec's definition: the lowest arrival rate at which e2e p99 exceeds 2x its low-load baseline, sustained 30s.
 
@@ -2349,7 +2349,7 @@ PY
 
 Expected: a knee near 40 rps / 800 events/s. **Record the measured number — every later run is a multiple of it, not of the prediction.**
 
-- [ ] **Step 3: Run the collapse at 1x, 2x and 4x the measured knee**
+- [x] **Step 3: Run the collapse at 1x, 2x and 4x the measured knee**
 
 Substitute the measured knee for `40` below if it differs.
 
@@ -2366,7 +2366,7 @@ Expected: 1x survives; 2x and 4x end with the gateway container `exited` and a n
 
 If neither 2x nor 4x dies within the run, the calibration is off: reduce `OVERLOAD_HIKARI_MAX` or raise `PAYLOAD_BYTES` so queue growth outpaces the heap sooner, then re-run.
 
-- [ ] **Step 4: Verify the central claim — Postgres was idle while the pool saturated**
+- [x] **Step 4: Verify the central claim — Postgres was idle while the pool saturated**
 
 ```bash
 docker compose -f compose/app.yml exec -T postgres psql -U overload -d overload -c \
@@ -2376,7 +2376,7 @@ docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
 
 Expected: rows written far below what was offered, and Postgres CPU low. This is the evidence for "the pool was the constraint, not the database."
 
-- [ ] **Step 5: Write `RESULTS.md`**
+- [x] **Step 5: Write `RESULTS.md`**
 
 ```markdown
 # Results
@@ -2432,11 +2432,11 @@ Findings to write up from the captured data:
 Phase 1.
 ```
 
-- [ ] **Step 6: Update the spec's calibration table with measured values**
+- [x] **Step 6: Update the spec's calibration table with measured values**
 
 Replace the predicted values in `docs/superpowers/specs/2026-09-03-overload-lab-design.md` under "Calibration targets" with what was actually measured, keeping the predictions in a "predicted" column so the spec records where the arithmetic was right and where it was wrong.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add RESULTS.md results docs/img docs/superpowers/specs
@@ -2447,15 +2447,15 @@ git commit -m "docs: calibrated knee and stage s0 collapse with captured evidenc
 
 ## Phase 0 Definition of Done
 
-- [ ] `docker compose -f compose/app.yml up -d --build` brings up four healthy services from a clean clone
-- [ ] `/actuator/overload` reports all four protections `false` at s0
-- [ ] The preflight assertion has been shown to fail on a deliberate mismatch
-- [ ] The knee has been measured, not assumed, and recorded
-- [ ] s0 at 2x and 4x ends in OOM, with time-to-death recorded for each
-- [ ] Postgres is demonstrably near-idle at collapse
-- [ ] `results/<run>/` holds `k6-summary.json`, `series.json`, `preflight.json`, `container-state.txt` for every run
-- [ ] `docs/img/` holds regenerated PNGs
-- [ ] RESULTS.md carries the method, the configuration and the s0 table
+- [x] `docker compose -f compose/app.yml up -d --build` brings up four healthy services from a clean clone
+- [x] `/actuator/overload` reports all four protections `false` at s0
+- [x] The preflight assertion has been shown to fail on a deliberate mismatch
+- [x] The knee has been measured, not assumed, and recorded
+- [x] s0 at 2x and 4x ends in OOM, with time-to-death recorded for each
+- [x] Postgres is demonstrably near-idle at collapse
+- [x] `results/<run>/` holds `k6-summary.json`, `series.json`, `preflight.json`, `container-state.txt` for every run
+- [x] `docs/img/` holds regenerated PNGs
+- [x] RESULTS.md carries the method, the configuration and the s0 table
 
 ## Deferred to Phase 1: the HTTP-starved variant
 
