@@ -21,6 +21,12 @@ QUERIES = {
     "e2e_p99":       'histogram_quantile(0.99, sum(rate(overload_event_e2e_seconds_bucket[10s])) by (le))',
     "e2e_p999":      'histogram_quantile(0.999, sum(rate(overload_event_e2e_seconds_bucket[10s])) by (le))',
     "accepted":      'sum(rate(overload_events_accepted_total[10s]))',
+    # True COMPLETION rate, as distinct from the acceptance rate above. The unbounded
+    # queue accepts everything offered, so "accepted" tracks offered load right up until
+    # the JVM dies while only a fraction is actually being written. The gap between these
+    # two series is the leak, and it is the headline finding -- so it must be a graph,
+    # not a paragraph.
+    "completed":     'sum(rate(overload_event_e2e_seconds_count[10s]))',
     "rejected":      'sum by (reason) (rate(overload_events_rejected_total[10s]))',
     "queue_depth":   'overload_queue_depth',
     # Recorded for provenance, not plotted: the sentinel -1 means "unbounded queue",
@@ -112,8 +118,9 @@ def main():
          [("edge p50", raw["edge_p50"]), ("edge p99", raw["edge_p99"]),
           ("e2e p50", raw["e2e_p50"]), ("e2e p99", raw["e2e_p99"]),
           ("e2e p999", raw["e2e_p999"])], True),
-        ("throughput", "Accepted throughput and rejections", "events/s",
-         [("accepted", raw["accepted"]), ("rejected", raw["rejected"])], False),
+        ("throughput", "Accepted vs completed throughput, and rejections", "events/s",
+         [("accepted", raw["accepted"]), ("completed", raw["completed"]),
+          ("rejected", raw["rejected"])], False),
         ("queue-heap", "Queue depth and JVM heap", "count / bytes",
          [("queue depth", raw["queue_depth"]), ("heap used", raw["heap_used"])], True),
         ("pools", "Pools and workers", "count",
