@@ -1,0 +1,89 @@
+name: overload-lab
+
+networks:
+  overload:
+    name: overload-lab
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: overload
+      POSTGRES_USER: overload
+      POSTGRES_PASSWORD: overload
+    volumes:
+      - ../db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ["5432:5432"]
+    networks: [overload]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overload"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    networks: [overload]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  downstream-sim:
+    build:
+      context: ..
+      dockerfile: downstream-sim/Dockerfile
+    ports: ["9090:9090"]
+    networks: [overload]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/control || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    ports: ["8080:8080"]
+    networks: [overload]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      downstream-sim: { condition: service_healthy }
+    environment:
+      JAVA_OPTS: "-Xmx256m -XX:+ExitOnOutOfMemoryError"
+      OVERLOAD_WORKERS: "${OVERLOAD_WORKERS:-64}"
+      OVERLOAD_HIKARI_MAX: "${OVERLOAD_HIKARI_MAX:-20}"
+      OVERLOAD_HTTP_POOL: "${OVERLOAD_HTTP_POOL:-32}"
+      OVERLOAD_QUEUE_BOUNDED: "${OVERLOAD_QUEUE_BOUNDED:-false}"
+      OVERLOAD_QUEUE_CAPACITY: "${OVERLOAD_QUEUE_CAPACITY:-5000}"
+      OVERLOAD_TIMEOUTS_ENABLED: "${OVERLOAD_TIMEOUTS_ENABLED:-false}"
+      OVERLOAD_CONNECT_MS: "${OVERLOAD_CONNECT_MS:-500}"
+      OVERLOAD_RESPONSE_MS: "${OVERLOAD_RESPONSE_MS:-250}"
+      OVERLOAD_LEASE_MS: "${OVERLOAD_LEASE_MS:-100}"
+      OVERLOAD_ADMISSION_ENABLED: "${OVERLOAD_ADMISSION_ENABLED:-false}"
+      OVERLOAD_ADMISSION_LIMIT: "${OVERLOAD_ADMISSION_LIMIT:-40}"
+      OVERLOAD_ADMISSION_WINDOW: "${OVERLOAD_ADMISSION_WINDOW:-1}"
+      OVERLOAD_BREAKER_ENABLED: "${OVERLOAD_BREAKER_ENABLED:-false}"
+    # No restart policy: stage s0 is expected to die of OOM, and that death is data.
+    restart: "no"
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 512M }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
