@@ -1398,7 +1398,7 @@ git commit -m "build(gateway): multi-stage Dockerfile building the pinned starte
 **Files:**
 - Create: `compose/app.yml`
 
-- [ ] **Step 1: Create `compose/app.yml`**
+- [x] **Step 1: Create `compose/app.yml`**
 
 CPU and memory limits are not incidental — they make the saturation point a property of the configuration rather than of whatever else the laptop is doing. k6 deliberately runs on the host, outside this budget, so the load generator never competes with the system under test.
 
@@ -1494,7 +1494,7 @@ services:
       retries: 60
 ```
 
-- [ ] **Step 2: Bring the stack up and verify end to end**
+- [x] **Step 2: Bring the stack up and verify end to end**
 
 ```bash
 docker compose -f compose/app.yml up -d --build
@@ -1509,7 +1509,7 @@ docker compose -f compose/app.yml exec -T postgres psql -U overload -d overload 
 
 Expected: all services healthy; `/actuator/overload` shows all four protections `false` and `hikariMaxPoolSize: 20`; POST returns `202`; the row count is `1`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add compose/app.yml
