@@ -65,8 +65,14 @@ curl -sf -X POST localhost:9090/control -H 'Content-Type: application/json' \
   -d '{"latencyMs":25,"jitterMs":10,"failureRate":0,"mode":"NORMAL"}' > /dev/null
 
 echo "==> warmup ${WARMUP}s at rate ${RATE} (discarded)"
-k6 run --quiet -e RATE="$RATE" -e DURATION="${WARMUP}s" -e BATCH="$BATCH" \
-  -e SUMMARY_OUT=/dev/null k6/steady.js > /dev/null 2>&1 || true
+# Do NOT swallow failures here. A broken generator during warmup used to pass silently,
+# and the measured run would then start from a cold JVM -- whose very first request takes
+# ~112ms against a 25ms downstream, poisoning every percentile.
+if ! k6 run --quiet -e RATE="$RATE" -e DURATION="${WARMUP}s" -e BATCH="$BATCH" \
+     -e SUMMARY_OUT=/dev/null k6/steady.js > "$OUTDIR/warmup.log" 2>&1; then
+  echo "WARNING: warmup k6 run failed. The measured run will start from a cold JVM."
+  tail -5 "$OUTDIR/warmup.log" | sed 's/^/    /'
+fi
 
 START=$(date +%s)
 echo "==> measuring ${DURATION} at rate ${RATE}"
@@ -83,10 +89,28 @@ echo "$STATE" > "$OUTDIR/container-state.txt"
 echo "k6 exit=${K6_RC}" >> "$OUTDIR/container-state.txt"
 
 echo "==> capturing Prometheus series and rendering PNGs"
+set +e
 docker run --rm --network overload-lab \
   -v "$ROOT/results:/out" -v "$ROOT/docs/img:/img" \
   overload-lab/capture:dev \
   --prom http://prometheus:9090 --start "$START" --end "$END" --step 1 \
   --outdir "/out/${RUN_ID}" --imgdir /img --label "$RUN_ID"
+CAP_RC=$?
+set -e
+
+# Assert the generator actually offered what this run claims to have offered. Without
+# this, a load generator that silently fell behind would make every "offered" figure in
+# RESULTS.md wrong, with nothing anywhere to flag it.
+echo "==> validating offered rate"
+set +e
+python3 tools/validate_run.py "$OUTDIR" "$(( RATE * BATCH ))"
+VAL_RC=$?
+set -e
+
+if [ "$CAP_RC" != 0 ] || [ "$VAL_RC" != 0 ]; then
+  echo "==> RUN FINISHED WITH VALIDATION FAILURES (capture=${CAP_RC} offered=${VAL_RC})"
+  echo "    Artifacts are in $OUTDIR. Do not trust these numbers until the cause is understood."
+  exit 1
+fi
 
 echo "==> done: $OUTDIR"
