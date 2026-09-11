@@ -365,3 +365,55 @@ removed. The qualitative findings are unchanged -- accepted tracks offered exact
 pegs flat, Postgres stays idle, death is JVM heap exhaustion. What changed is that the
 capacity-degradation figure is now 20.8% rather than 27%, and it has direct GC evidence
 behind it instead of an argument from elimination.
+
+---
+
+## 8. Batch C predictions, recorded before the sweep
+
+Sweeping the HikariCP pool size `c ∈ {5, 10, 20, 40}` with everything else held constant,
+stepping through utilisation ρ ∈ {0.5, 0.7, 0.85, 0.92, 0.97, 1.05} of each pool's predicted
+capacity, 90s flat at each step.
+
+**The HTTP pool is raised from 32 to 64 for every run in this sweep.** At its default it
+would bind before Hikari at c=40 (`32 / 26.5ms = 1208 ev/s` < `40 / 26.5ms = 1509 ev/s`), and
+that point would silently measure the HTTP pool instead of the variable under test -- the
+exact confound Task 9 existed to remove, reintroduced by changing the other variable.
+
+### Prediction 1: capacity is linear in c
+
+`capacity = c / hold_time`, with hold time 26.5ms measured from the c=20 runs.
+
+| c | predicted capacity | predicted hikari active / pending |
+|---|---|---|
+| 5 | 189 ev/s | 5 / 59 |
+| 10 | 377 ev/s | 10 / 54 |
+| 20 | 755 ev/s | 20 / 44 |
+| 40 | 1,509 ev/s | 40 / 24 |
+
+The informative plot is **capacity ÷ c**, which should sit flat at ~37.7 ev/s per connection
+while every other resource is unloaded.
+
+### Prediction 2: linearity breaks at c=40
+
+At 1,509 ev/s one of three things should bind before Hikari does -- the gateway's 2 CPUs,
+downstream-sim's single CPU, or Postgres. Hold time is only constant while those are idle;
+contention raises it and bends the line. Where `capacity ÷ c` droops identifies the *second*
+bottleneck without having to guess at it.
+
+### Prediction 3: the knee sharpens as c rises
+
+Quantified as **latency inflation at ρ=0.85**: `e2e_p99(ρ=0.85) / e2e_p99(ρ=0.5)`.
+
+Single-server queueing predicts a wait of roughly 5.7x service time at that utilisation. At
+c=20 we measured essentially no inflation at all. The reason is statistical: an arrival waits
+only if *every* server is busy simultaneously, and the relative fluctuation in the number of
+busy servers shrinks as 1/sqrt(c), so larger pools concentrate tightly around their mean
+utilisation and "all busy" becomes a sharper threshold event.
+
+So inflation at ρ=0.85 should fall monotonically as c rises. **This is the falsifiable core of
+the sweep** -- the claim in Section 5 currently rests on a single pool size.
+
+If it holds, the result is a scaling law rather than an anecdote: *capacity scales linearly
+with pool concurrency until a second resource binds, and the latency knee sharpens as
+concurrency rises -- so higher-concurrency systems offer more usable headroom and less
+warning before collapse.*
