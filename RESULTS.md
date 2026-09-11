@@ -2,9 +2,10 @@
 
 ## Status of claims (read this first)
 
-This document has been revised three times as the experiment was made more rigorous. Numbers
-in later sections supersede earlier ones. An external review on 2026-09-12 found several
-defects; they are listed here rather than quietly patched.
+This document has been through three measurement batches (A, B, C -- defined below) and three
+external review cycles, on 2026-09-11 and twice on 2026-09-12. Numbers in later sections
+supersede earlier ones. Defects the reviews found are listed here rather than quietly patched;
+several claims have been withdrawn outright.
 
 **Terminology.** *Batch A* = instrumentation added after the first run (GC series, capture
 assertions, offered-rate gate). *Batch B* = the controlled re-measurement of stage s0 (n=3,
@@ -15,7 +16,7 @@ randomized order, table truncated between runs). *Batch C* = the HikariCP pool-s
 | Capacity ~754 ev/s at c=20, Hikari-bound, Postgres idle | **stands** (Sections 1-3; reproduced in Batch B and C) |
 | Accepted tracks offered exactly until death | **stands**, and the offered rate is now gated (Batch A) |
 | The unbounded queue converts a throughput deficit into latency then heap death | **stands** |
-| `capacity = c / hold_time`, linear in c | **stands** (Section 9; four points over an 8x range, and the known confounds push against it) |
+| `capacity = c / hold_time`, linear in c | **supported, approximate** -- 8x range to within 5.6%, but only c=5 demonstrably plateaued and the 5.6% deviation is systematic and unexplained (Section 9) |
 | Hold time falls as throughput rises ("JIT warmth") | **NOT ESTABLISHED** -- confounded with session order, table size and warmup (Section 9) |
 | GC pause accounts ~1:1 for capacity loss | **stands at 4x** (ratio 1.05-1.12); **does not fit at 2x** (0.60-0.99, baseline-dependent) |
 | Capacity degrades ~21% at 4x under GC pressure | **stands** (Section 7; direct GC evidence) |
@@ -341,7 +342,12 @@ The Section 2 numbers came from three back-to-back runs against a table that gre
 monotonically -- an uncontrolled confound. This batch re-measures the same three conditions
 properly: **n=3 per condition, seeded randomized order, `TRUNCATE events` before every run**,
 with the Batch A instrumentation live (GC series, capture assertions, offered-rate gate).
-All 18 validations passed; no run was excluded.
+All 18 validations passed and no run was excluded. Each run carries two automated checks, so
+nine runs give eighteen: the **capture assertions** (exactly one series per query where one is
+expected, and `accepted_total` never running backwards, which would mean the gateway restarted
+inside the measurement window) and the **offered-rate gate** (the p90 of the server-side
+accepted rate must reach 97% of target, proving the load generator genuinely delivered what
+the run claims it offered).
 
 Order executed: `4x, 1x, 2x, 2x, 2x, 4x, 1x, 4x, 1x` (seed 20260912).
 
@@ -469,7 +475,10 @@ exact confound Task 9 existed to remove, reintroduced by changing the other vari
 
 ### Prediction 1: capacity is linear in c
 
-`capacity = c / hold_time`, with hold time 26.5ms measured from the c=20 runs.
+`capacity = c / hold_time`, with hold time 26.5 ms derived from Section 3's baseline of
+754 ev/s at c=20 (`20 / 754 = 26.53 ms`) -- the only capacity figure available when these
+predictions were written. Note the sweep itself later measured c=20 at 748 ev/s, i.e.
+26.73 ms, so the predictor was very slightly optimistic.
 
 | c | predicted capacity | predicted hikari active / pending |
 |---|---|---|
@@ -519,7 +528,7 @@ never bind. Every run's preflight confirmed both pool sizes actually took effect
 (`hikari=5/10/20/40 http=64 workers=64`). Six flat 90-second holds each; medians over the
 last 60s of every hold.
 
-### Prediction 1: capacity linear in c -- CONFIRMED across an 8x range
+### Prediction 1: capacity linear in c -- SUPPORTED across an 8x range, approximately
 
 | c | predicted | measured | measured/predicted | capacity per connection | implied hold time |
 |---|---|---|---|---|---|
@@ -528,15 +537,29 @@ last 60s of every hold.
 | 20 | 755 ev/s | 748 ev/s | 0.99 | 37.4 ev/s | 26.73 ms |
 | 40 | 1,509 ev/s | 1,508 ev/s | 1.00 | 37.7 ev/s | 26.53 ms |
 
-`capacity = c / hold_time` holds over an eightfold range of pool size. Capacity per
-connection spans 35.69 to 37.70 ev/s -- a **5.6% spread**, rising monotonically with c rather
-than scattering, which is itself a systematic effect discussed under Prediction 2.
+`capacity = c / hold_time` holds over an eightfold range of pool size, to within 5.6%.
+
+Two qualifications keep this from being a clean confirmation. First, **only c=5 demonstrably
+plateaued** (178 ev/s at both ρ=0.97 and ρ=1.05); for c=10, 20 and 40 the capacity figure is
+the top-step completion, which the defects section below argues is probably an underestimate.
+Second, capacity per connection spans 35.69 to 37.70 ev/s and rises *monotonically* with c
+rather than scattering -- a systematic 5.6% effect, not noise. The candidate explanation for
+it is discussed under Prediction 2 and is itself **not established**, being confounded with
+session order, table size and warmup.
+
+So: the relationship is real and useful over an 8x range, with a 5.6% systematic deviation
+whose cause is unresolved.
 
 ### Prediction 2: linearity breaks at c=40 -- REFUTED
 
-Nothing else bound. c=40 was the *most* accurate point of the four (ratio 1.00), delivering
-1,508 ev/s against 1,509 predicted. The gateway's 2 CPUs, downstream-sim's 1 CPU and Postgres
-all absorbed 1,508 events/s without becoming the constraint.
+Nothing else bound *in a way that showed up in throughput*. c=40 was the most accurate point
+of the four (ratio 1.00), delivering 1,508 ev/s against 1,509 predicted -- so whatever else
+was happening, Hikari remained the binding constraint at that rate.
+
+**That is an inference from throughput, not a measurement of the alternatives.** Container CPU
+for the gateway, downstream-sim and Postgres was never scraped (see "Prediction 2, revisited"
+below). The correct statement is that the three of them *sustained* 1,508 events/s without
+displacing Hikari as the constraint -- not that any of them had headroom to spare.
 
 The line does bend -- but at the **bottom**, and in the opposite direction to a bottleneck.
 Implied hold time *falls* as c rises: 28.02 ms at c=5 down to 26.53 ms at c=40. Small pools
@@ -546,7 +569,11 @@ The explanation is the same mechanism as the edge-latency finding in Section 1: 
 service is running at 178 ev/s and the JVM is comparatively cold; at c=40 it is running at
 1,508 ev/s and every path is hot. Baseline e2e p99 tracks this directly -- 135.6 ms at c=5,
 86.0 at c=10, 43.1 at c=20, 40.2 at c=40 -- at ρ=0.5 in every case, where nothing is queueing.
-**Throughput itself makes the system faster per unit of work.**
+The most likely reading is that **throughput itself makes the system faster per unit of
+work** -- but this is *not established*. As documented under "Batch C design defects" below,
+pool size in this sweep is confounded with session order, table size and warmup
+simultaneously, any of which produces the same direction. It is a hypothesis consistent with
+the data, not a result.
 
 ### Prediction 3: the knee sharpens with c -- NOT ESTABLISHED (confounded)
 
@@ -612,9 +639,11 @@ across the entire sweep, which was captured but not reported:
 | 20 | 0.003 | 0.003 | 0.003 | 0.003 | 0.003 | 0.004 |
 | 40 | 0.003 | 0.003 | 0.004 | 0.004 | 0.004 | 0.014 |
 
-Negligible throughout -- between 14x and 66x below the 0.199 s/s that drove the 21% capacity
-loss at 4x in Section 7 (that is roughly one to one-and-three-quarter orders of magnitude, not
-two). **GC is ruled out as the thing bending the line.** That is
+Negligible throughout -- between **14x and ~100x** below the 0.199 s/s that drove the 21%
+capacity loss at 4x in Section 7 (0.199/0.014 = 14x at the sweep's single elevated cell,
+0.199/0.002 = 100x at its smallest). That is 1.2 to 2.0 orders of magnitude. An earlier
+version said "two orders", which was corrected to "14x to 66x" using 0.003 as the floor --
+but the table's floor is 0.002, so that correction understated the range in turn. **GC is ruled out as the thing bending the line.** That is
 a real result and it is the most likely candidate eliminated.
 
 It is not the whole refutation. Gateway CPU, downstream-sim CPU, and Postgres CPU were never
