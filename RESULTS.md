@@ -168,9 +168,9 @@ not a kernel OOM-kill of the container. The clean failure path.
 **Accepted equals offered exactly at every load**, including 4x. The gateway returned 202 to
 100% of requests right up to the moment it died. The unbounded queue accepts everything.
 
-![2x latency](docs/img/s0-fragile-A-rate74-latency.png)
-![2x queue and heap](docs/img/s0-fragile-A-rate74-queue-heap.png)
-![2x pools](docs/img/s0-fragile-A-rate74-pools.png)
+![2x latency](docs/img/s0-fragile-A-rate74-r4-latency.png)
+![2x queue and heap](docs/img/s0-fragile-A-rate74-r4-queue-heap.png)
+![2x pools](docs/img/s0-fragile-A-rate74-r4-pools.png)
 
 ## 3. Which resource saturated, and how the rest followed
 
