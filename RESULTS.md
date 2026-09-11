@@ -33,8 +33,12 @@ Every graph is regenerable: re-run the stage.
   the configuration, not of the host. k6 runs on the host, outside that budget.
 - Prometheus scrapes at **1s**. At the default 15s a per-second waveform is averaged flat.
 - 60s of warmup is discarded before each measurement window.
-- Every run asserts, before generating load, that the protections actually active match the
-  stage file (`results/<run>/preflight.json`). The guard is exercisable on demand with
+- Every run asserts, before generating load, that the configuration actually in effect matches
+  what the run intends, reading `/actuator/overload` into `results/<run>/preflight.json`.
+  Stage runs (`run-stage.sh`) check the four protection flags; sweep runs (`run-sweep.sh`)
+  check the numeric tunables `hikariMaxPoolSize` and `httpPoolSize`, since there the pool
+  size is the independent variable and one that silently failed to change would produce
+  several identical curves. The stage guard is exercisable on demand with
   `PREFLIGHT_SELFTEST=1`.
 - Rate limiter under test: `sanchit-g/distributed-rate-limiter` pinned at `2789431`.
 
@@ -49,6 +53,15 @@ Every graph is regenerable: re-run the stage.
 | batch size | 20 events x ~1KB |
 | gateway heap | 256MB, `-XX:+ExitOnOutOfMemoryError` |
 | gateway container | 2 CPUs / 512MB |
+
+This is the **baseline** configuration, used for Sections 1-7. Batch C (Sections 8-9)
+deliberately overrides three of these:
+
+| Parameter | Baseline | Batch C |
+|---|---|---|
+| Hikari max pool | 20 | **5 / 10 / 20 / 40** (the independent variable) |
+| HTTP client pool | 32 | **64** -- at 32 it would bind before Hikari at c=40 and that point would measure the wrong pool |
+| warmup discarded | 60s | **20s** |
 
 ---
 
@@ -461,9 +474,13 @@ with pool concurrency until a second resource binds, and the latency knee sharpe
 concurrency rises -- so higher-concurrency systems offer more usable headroom and less
 warning before collapse.*
 
+> **Outcome (added after the sweep):** prediction 1 held; prediction 2 was refuted; prediction 3
+> is **not established** -- the utilisation denominator used here turned out to be circular. The
+> predictions above are left exactly as they were recorded. See Section 9.
+
 ---
 
-## 9. Batch C results: the scaling law
+## 9. Batch C results: a capacity law (and a withdrawn latency claim)
 
 Four Hikari pool sizes, everything else held constant, HTTP pool raised to 64 so it could
 never bind. Every run's preflight confirmed both pool sizes actually took effect
@@ -557,8 +574,9 @@ across the entire sweep, which was captured but not reported:
 | 20 | 0.003 | 0.003 | 0.003 | 0.003 | 0.003 | 0.004 |
 | 40 | 0.003 | 0.003 | 0.004 | 0.004 | 0.004 | 0.014 |
 
-Negligible throughout -- two orders of magnitude below the 0.199 s/s that drove the 21%
-capacity loss at 4x in Section 7. **GC is ruled out as the thing bending the line.** That is
+Negligible throughout -- between 14x and 66x below the 0.199 s/s that drove the 21% capacity
+loss at 4x in Section 7 (that is roughly one to one-and-three-quarter orders of magnitude, not
+two). **GC is ruled out as the thing bending the line.** That is
 a real result and it is the most likely candidate eliminated.
 
 It is not the whole refutation. Gateway CPU, downstream-sim CPU, and Postgres CPU were never
