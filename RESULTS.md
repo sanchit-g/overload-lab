@@ -417,3 +417,86 @@ If it holds, the result is a scaling law rather than an anecdote: *capacity scal
 with pool concurrency until a second resource binds, and the latency knee sharpens as
 concurrency rises -- so higher-concurrency systems offer more usable headroom and less
 warning before collapse.*
+
+---
+
+## 9. Batch C results: the scaling law
+
+Four Hikari pool sizes, everything else held constant, HTTP pool raised to 64 so it could
+never bind. Every run's preflight confirmed both pool sizes actually took effect
+(`hikari=5/10/20/40 http=64 workers=64`). Six flat 90-second holds each; medians over the
+last 60s of every hold.
+
+### Prediction 1: capacity linear in c -- CONFIRMED across an 8x range
+
+| c | predicted | measured | measured/predicted | capacity per connection | implied hold time |
+|---|---|---|---|---|---|
+| 5 | 189 ev/s | 178 ev/s | 0.95 | 35.7 ev/s | 28.02 ms |
+| 10 | 377 ev/s | 366 ev/s | 0.97 | 36.6 ev/s | 27.33 ms |
+| 20 | 755 ev/s | 748 ev/s | 0.99 | 37.4 ev/s | 26.73 ms |
+| 40 | 1,509 ev/s | 1,508 ev/s | 1.00 | 37.7 ev/s | 26.53 ms |
+
+`capacity = c / hold_time` holds over an eightfold range of pool size. Capacity per
+connection is flat to within 5%.
+
+### Prediction 2: linearity breaks at c=40 -- REFUTED
+
+Nothing else bound. c=40 was the *most* accurate point of the four (ratio 1.00), delivering
+1,508 ev/s against 1,509 predicted. The gateway's 2 CPUs, downstream-sim's 1 CPU and Postgres
+all absorbed 1,508 events/s without becoming the constraint.
+
+The line does bend -- but at the **bottom**, and in the opposite direction to a bottleneck.
+Implied hold time *falls* as c rises: 28.02 ms at c=5 down to 26.53 ms at c=40. Small pools
+are slightly slower per operation, not faster.
+
+The explanation is the same mechanism as the edge-latency finding in Section 1: at c=5 the
+service is running at 178 ev/s and the JVM is comparatively cold; at c=40 it is running at
+1,508 ev/s and every path is hot. Baseline e2e p99 tracks this directly -- 135.6 ms at c=5,
+86.0 at c=10, 43.1 at c=20, 40.2 at c=40 -- at ρ=0.5 in every case, where nothing is queueing.
+**Throughput itself makes the system faster per unit of work.**
+
+### Prediction 3: the knee sharpens with c -- CONFIRMED, but my diagnostic point was wrong
+
+Latency inflation relative to the ρ=0.5 baseline:
+
+| c | e2e@0.50 | e2e@0.85 | inflation | e2e@0.97 | inflation | queue @0.97 |
+|---|---|---|---|---|---|---|
+| 5 | 135.6 ms | 139.0 ms | 1.02x | **9,830 ms** | **72.5x** | 180 |
+| 10 | 86.0 ms | 87.3 ms | 1.02x | **1,453 ms** | **16.9x** | 36 |
+| 20 | 43.1 ms | 48.4 ms | 1.12x | 62.6 ms | 1.45x | 0 |
+| 40 | 40.2 ms | 42.5 ms | 1.06x | 50.2 ms | 1.25x | 0 |
+
+At **ρ=0.85 there is no signal at all** -- every pool size sits within 12% of its baseline,
+including c=5. The metric I nominated in advance would have shown nothing. The action is
+between ρ=0.92 and ρ=0.97.
+
+At **ρ=0.97 the effect is enormous and perfectly monotonic**: 72.5x, 16.9x, 1.45x, 1.25x. A
+five-connection pool at 97% utilisation is serving p99 latencies of **9.8 seconds**; a
+forty-connection pool at the same utilisation is at 50 ms.
+
+Queue depth is the cleanest evidence, because it is an absolute count rather than a ratio
+against a baseline that itself varies with c: **180 events queued at c=5, 36 at c=10, zero at
+c=20 and c=40**, all at the same 97% utilisation. Queueing at high utilisation happens at low
+concurrency and simply does not happen at high concurrency. That is the Erlang C prediction,
+measured.
+
+### The law
+
+> **capacity = c / hold_time**, linear over at least an 8x range of pool concurrency -- and
+> the *usable* utilisation ceiling rises with c. At c=5 you must stay below ~92% or latency
+> explodes by 70x. At c=40 you can run at 97% for a 1.25x latency cost.
+>
+> Higher concurrency therefore buys two things at once: proportionally more capacity, and
+> permission to run closer to it. What it costs is warning -- the same flatness that lets a
+> large pool run at 97% means latency gives no gradual signal before saturation.
+
+This supersedes the single-pool-size claim in Section 5. The "keep utilisation under 70-80%"
+rule is calibrated for small concurrency; at c=40 it leaves roughly a quarter of the
+achievable throughput unused.
+
+### Caveat
+
+Because each pool size is measured at its own absolute throughput, baseline latency differs
+across the four (135 ms at c=5 against 40 ms at c=40) through the JIT-warmth effect above.
+The inflation ratio normalises for this, and the queue-depth column does not depend on it at
+all -- both agree, so the conclusion does not rest on the normalisation.

@@ -1,0 +1,1 @@
+{"protections":{"timeouts":false,"boundedQueue":false,"admission":false,"breaker":false},"tunables":{"workers":64,"queueCapacity":5000,"httpPoolSize":64,"responseTimeoutMs":250,"admissionLimit":40,"hikariMaxPoolSize":10}}
