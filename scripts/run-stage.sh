@@ -18,9 +18,20 @@ cd "$ROOT"
 # shellcheck disable=SC1090
 set -a; source "stages/${STAGE}.env"; set +a
 
-RUN_ID="${STAGE_NAME}-${PROFILE}-rate${RATE}"
+# RUN_SUFFIX distinguishes repetitions of the same condition, so n>1 designs do not
+# overwrite themselves.
+RUN_ID="${STAGE_NAME}-${PROFILE}-rate${RATE}${RUN_SUFFIX:+-${RUN_SUFFIX}}"
 OUTDIR="results/${RUN_ID}"
 mkdir -p "$OUTDIR" docs/img
+
+# Opt-in, because a growing events table is a genuine confound between back-to-back runs
+# (index maintenance slows inserts) AND a legitimate experiment in its own right. Runs that
+# want independence set TRUNCATE_EVENTS=1; the growing-table variant deliberately does not.
+if [ "${TRUNCATE_EVENTS:-0}" = "1" ]; then
+  echo "==> truncating events table (run independence)"
+  docker compose -f compose/app.yml exec -T postgres \
+    psql -U overload -d overload -c 'TRUNCATE events RESTART IDENTITY;' > /dev/null
+fi
 
 echo "==> [${RUN_ID}] recreating gateway"
 docker compose -f compose/app.yml up -d --force-recreate --no-deps gateway

@@ -1,0 +1,2 @@
+exited exit=3 oom=false
+k6 exit=0

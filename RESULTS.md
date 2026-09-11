@@ -280,3 +280,88 @@ default Spring Boot dashboard.
 **Stages s1-s4 in Phase 1** reintroduce protections one at a time and measure what each is
 actually worth against this baseline.
 
+---
+
+## 7. Batch B: controlled re-measurement (n=3, randomized, isolated)
+
+The Section 2 numbers came from three back-to-back runs against a table that grew
+monotonically -- an uncontrolled confound. This batch re-measures the same three conditions
+properly: **n=3 per condition, seeded randomized order, `TRUNCATE events` before every run**,
+with the Batch A instrumentation live (GC series, capture assertions, offered-rate gate).
+All 18 validations passed; no run was excluded.
+
+Order executed: `4x, 1x, 2x, 2x, 2x, 4x, 1x, 4x, 1x` (seed 20260912).
+
+### Results -- median [min-max] over n=3
+
+| condition | completed ev/s | queue slope /s | life (s) |
+|---|---|---|---|
+| **1x** (740 ev/s offered) | 740 [740-740] | 0 [0-0] | 241 [240-241] survived |
+| **2x** (1,480 ev/s) | 719 [713-722] | 763 [760-768] | 228 [226-230] |
+| **4x** (2,960 ev/s) | 586 [544-596] | 2,347 [2,331-2,386] | 64 [64-66] |
+
+| condition | GC pause s/s | edge p99 ms | e2e p99 ms | queue peak |
+|---|---|---|---|---|
+| 1x | 0.004 [0.003-0.005] | 2.0 [2.0-2.7] | 66 [61-71] | 52 [42-64] |
+| 2x | 0.047 [0.046-0.060] | 1.5 [1.4-1.9] | 91,143 | 180,668 |
+| 4x | 0.199 [0.191-0.228] | 16.2 [12.9-22.0] | 51,030 | 169,080 |
+
+**Reproducibility is high.** Completion rate at 1x varied not at all across three runs; queue
+slope at 2x spanned 1% (760-768/s); time to death at 2x spanned 1.7% (226-230s). The
+measurements are stable enough that differences of a few percent are real.
+
+### GC: direct evidence, replacing inference
+
+Section 5 attributed the capacity loss at 4x to GC pressure by elimination. The GC series
+now make it quantitative:
+
+| condition | GC pause s/s | capacity vs 1x |
+|---|---|---|
+| 1x | 0.004 | -- |
+| 2x | 0.047 | -2.8% |
+| 4x | **0.199** | **-20.8%** |
+
+At 4x the JVM spends **0.199 seconds of every wall-clock second in stop-the-world GC pause**
+-- 19.9% of available time. Measured capacity loss over the same runs is **20.8%**. The
+correspondence is very nearly 1:1, which is what stop-the-world pauses predict: every worker
+thread is halted for that fraction of the time, so throughput falls by that fraction.
+
+This is the death spiral made concrete. Overload fills the heap; filling the heap costs GC
+time; GC time reduces capacity; reduced capacity deepens the deficit; the deficit fills the
+heap faster.
+
+### The growing-table confound, now quantified -- and my estimate of it was wrong
+
+| 4x capacity | conditions |
+|---|---|
+| 553 ev/s | Section 2, table at 864k rows and growing |
+| 586 ev/s | here, table truncated before the run |
+
+Index maintenance on the grown table cost **~33 ev/s, about 4.5% of baseline capacity**.
+Section 5 estimated that effect at "roughly 1%" by extrapolating linearly from two points.
+That extrapolation was wrong by a factor of about four: btree insert cost against table size
+is not linear, and two points cannot establish the shape. The GC conclusion survives -- it
+was always the dominant term -- but the confound was materially larger than claimed, and
+claiming it at all from an uncontrolled design was the real error.
+
+### Cross-check: drain recovered from the queue graph
+
+| | offered | queue slope | implied drain | measured completed |
+|---|---|---|---|---|
+| 1x | 740 | 0 | 740 | 740 |
+| 2x | 1,480 | 763 | 717 | 719 |
+| 4x | 2,960 | 2,347 | 613 | 586 |
+
+At 1x and 2x this recovers capacity to within 0.3%. At 4x it overshoots by 4.6%, and that gap
+is itself informative: the slope is fitted across the whole window while capacity is *falling*
+during it as GC worsens, so a single linear slope cannot describe a run whose drain rate is
+not constant.
+
+### What supersedes what
+
+The Section 2 table stands as the narrative of the first run, but **these are the numbers to
+cite**: they are medians over independent replicates in randomized order with the confound
+removed. The qualitative findings are unchanged -- accepted tracks offered exactly, Hikari
+pegs flat, Postgres stays idle, death is JVM heap exhaustion. What changed is that the
+capacity-degradation figure is now 20.8% rather than 27%, and it has direct GC evidence
+behind it instead of an argument from elimination.
