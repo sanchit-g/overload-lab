@@ -27,9 +27,10 @@ randomized order, table truncated between runs). *Batch C* = the HikariCP pool-s
 | Nothing else bound at 1,508 ev/s | **partially shown** -- GC ruled out, CPU never measured |
 
 All numbers produced against the committed configuration by one of three harnesses:
-`./scripts/run-stage.sh <stage>` for the stage runs (Sections 2-7), `k6/knee.js` for the
-knee ramp (Section 1), and `./scripts/run-sweep.sh <c>` for the pool-size sweep (Sections
-8-9).
+`./scripts/run-stage.sh <stage>` for the stage runs (Sections 2, 4-7), `k6/knee.js` for the
+knee ramp (Section 1 -- and Section 3's resource snapshot, which is taken from that ramp
+rather than from a stage run), and `./scripts/run-sweep.sh <c>` for the pool-size sweep
+(Sections 8-9).
 Every graph is regenerable: re-run the stage.
 
 ## Method
@@ -270,7 +271,8 @@ dashboard and capture queries now aggregate with `sum()`.
 > note said "~8x", which divided by the 1x value instead; wrong denominator.)
 >
 > **Not all of this section's qualitative conclusions stand.** What survives is the mechanism:
-> Hikari-bound capacity, Postgres idle at collapse, accepted tracking offered exactly, and the
+> Hikari-bound capacity, Postgres not the constraint at collapse (*inferred* -- its CPU was
+> never scraped; see Section 3), accepted tracking offered exactly, and the
 > queue converting a deficit into latency debt and heap death. Also surviving as *direct
 > observation at c=20*: latency was flat from ρ≈0.53 to ρ≈0.80 and then went vertical, and the
 > system **survived indefinitely at 740 ev/s offered** with queue depth near zero (confirmed at
@@ -297,7 +299,7 @@ dashboard and capture queries now aggregate with `sum()`.
 | time to death, 2x | 243s | 227s | 7% over |
 | time to death, 4x | 78s | 64s | 18% over |
 | **knee position** | **28-30 rps, below capacity** | **~37-40 rps, at capacity** | **wrong** |
-| **1x stability** | marginal, may degrade | stable at 98% utilisation | **wrong** |
+| **1x stability** | marginal, may degrade | survived at 740 ev/s offered, queue near zero | **wrong** |
 
 ### The knee prediction was wrong, and that is the most useful result here
 
@@ -353,7 +355,8 @@ exceeding it: instead of refusing work it could not do, the service accepted 100
 reported success, converted the excess into latency debt and heap, and died.
 
 Every conventional signal looked fine. HTTP latency was flat and falling. Both connection
-pools were stable. Postgres was idle. Worker threads were fully utilised, which reads as
+pools were stable. Postgres was not the constraint -- inferred rather than measured, since
+its CPU was never scraped (Section 3). Worker threads were fully utilised, which reads as
 healthy. The only two moving lines were queue depth and heap -- neither of which is on a
 default Spring Boot dashboard.
 
@@ -493,28 +496,50 @@ Section 4 estimated this at n=1. On controlled replicates:
 | 2x | 1,070 [1,042-1,082] |
 | 4x | 1,085 [984-1,101] |
 
-Against the 1,150 B predicted before any run. The n=1 figures (1,173 and 1,253 B) sat slightly
-high; the controlled medians are tighter and closer to prediction.
+Against the 1,150 B predicted before any run:
+
+| condition | n=1 (uncontrolled) | controlled median | which is closer to 1,150? |
+|---|---|---|---|
+| 2x | 1,173 (+2.0%) | 1,070 (-7.0%) | the **n=1** value |
+| 4x | 1,253 (+9.0%) | 1,085 (-5.7%) | the **controlled** value |
+
+So the controlled replicates are **tighter** (ranges of 40 B and 117 B), but not uniformly
+closer to prediction -- only at 4x. Note also the sign flip: both n=1 figures sat above 1,150
+and both controlled medians sit below it, which is more consistent with the uncontrolled runs
+carrying extra uncollected garbage than with the prediction being badly calibrated.
 
 ### Cross-check: rows written against the completions integral (controlled, n=3)
 
 Because the table is truncated before every run, each run's row count *is* its total written.
-Comparing that to the median completion rate integrated over the window plus warmup:
+The denominator is `median completion rate x (series span + warmup)`, where the **series span
+is not the configured window** but the time until metrics stop -- which for 2x and 4x is the
+moment the gateway died:
 
-| condition | rows / (completed x duration), median |
+| condition | series span | + warmup | denominator duration |
+|---|---|---|---|
+| 1x | 241 s (ran to the end) | 45 s | 286 s |
+| 2x | 228 s (time to death) | 10 s | 238 s |
+| 4x | 64 s (time to death) | 10 s | 74 s |
+
+| condition | rows / (completed x duration), median [min-max] |
 |---|---|
-| 1x | 0.997 |
-| 2x | 0.988 |
-| 4x | **1.096** |
+| 1x | 0.997 [0.997-1.000] |
+| 2x | 0.988 [0.980-0.992] |
+| 4x | **1.096 [1.095-1.115]** |
 
 At 1x and 2x the agreement is within 1.2%, so accepted-but-unwritten events are fully
 accounted for by queue depth.
 
-**The 4x discrepancy is not an error -- it is corroboration.** Using a *median* completion
-rate assumes the rate is constant, and at 4x it is not: it falls throughout the run as GC
-worsens. A constant-rate model therefore under-predicts the total, which is exactly the 10%
-shortfall observed. The row count independently confirms that capacity degraded within the
-run.
+**The 4x discrepancy is consistent with within-run degradation, but is not proof of it.**
+Using a *median* completion rate assumes the rate is constant, and at 4x it is not: it falls
+throughout the run as GC worsens, so a constant-rate model under-predicts the total. That
+accounts for the ~10% shortfall.
+
+A second reading fits equally well, however: the 10s warmup at 4x runs on a fresh JVM with an
+empty queue and no GC pressure, so its completion rate is plausibly higher than the measured
+median, and those writes are in the row count. Both mechanisms push the same direction and
+this arithmetic cannot separate them. Distinguishing them needs the completion rate integrated
+over time rather than taken as a median -- available from the captured series, not yet done.
 
 ### What supersedes what
 
