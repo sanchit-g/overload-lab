@@ -25,7 +25,10 @@ randomized order, table truncated between runs). *Batch C* = the HikariCP pool-s
 | The latency knee sharpens as pool concurrency rises | **NOT ESTABLISHED** -- confounded (Section 9) |
 | Nothing else bound at 1,508 ev/s | **partially shown** -- GC ruled out, CPU never measured |
 
-All numbers produced by `./scripts/run-stage.sh <stage>` against the committed configuration.
+All numbers produced against the committed configuration by one of three harnesses:
+`./scripts/run-stage.sh <stage>` for the stage runs (Sections 2-7), `k6/knee.js` for the
+knee ramp (Section 1), and `./scripts/run-sweep.sh <c>` for the pool-size sweep (Sections
+8-9).
 Every graph is regenerable: re-run the stage.
 
 ## Method
@@ -255,8 +258,19 @@ dashboard and capture queries now aggregate with `sum()`.
 > figure (27%) and its 4x edge-latency figures (30.7 ms, "16x worse than 2x") were measured
 > against a growing table at n=1. Section 7 replaces them with 20.8% and 16.2 ms, which is
 > **10.8x the 2x value** of 1.5 ms -- the like-for-like comparison. (An earlier version of this
-> note said "~8x", which divided by the 1x value instead; wrong denominator.) The qualitative
-> conclusions stand; these numbers do not.
+> note said "~8x", which divided by the 1x value instead; wrong denominator.)
+>
+> **Not all of this section's qualitative conclusions stand.** What survives is the mechanism:
+> Hikari-bound capacity, Postgres idle at collapse, accepted tracking offered exactly, and the
+> queue converting a deficit into latency debt and heap death. Also surviving as *direct
+> observation at c=20*: latency was flat from ρ≈0.53 to ρ≈0.80 and then went vertical, and the
+> system ran stably at ρ≈0.98 (confirmed at n=3 in Section 7).
+>
+> **Withdrawn:** the multi-server *explanation* for that flatness, and the operational
+> conclusion drawn from it below -- that a high-concurrency system offers more usable headroom
+> and less warning. Section 9 shows the sweep meant to establish that was confounded in its
+> utilisation denominator; the status table marks it NOT ESTABLISHED. The flatness at c=20 is
+> observed; that it is *caused by* pool concurrency, and varies with it, is not.
 
 
 | Prediction | Predicted | Measured | Verdict |
@@ -390,6 +404,13 @@ now make it quantitative:
 | 1x | 0.004 | -- |
 | 2x | 0.047 | -2.8% |
 | 4x | **0.199** | **-20.8%** |
+
+The metric is Micrometer's `jvm_gc_pause_seconds_sum`, which records pause durations reported
+by `GarbageCollectorMXBean`. The gateway runs **SerialGC** -- confirmed both by the metric's
+own `gc="Copy"` tag and by `UseSerialGC = true {ergonomic}` in the running container, chosen
+by JVM ergonomics for a 2-CPU / 256MB container. SerialGC is entirely stop-the-world in both
+generations, so pause time maps directly to worker time lost, which is what the 1:1 argument
+below requires.
 
 At 4x the JVM spends **0.199 seconds of every wall-clock second in stop-the-world GC pause**
 -- 19.9% of available time. Measured capacity loss is **20.8%**, a ratio of 1.05. That is the
@@ -610,7 +631,7 @@ floor falls monotonically with pool size:
 | 40 | 0.501 | 40.2 ms | 0.0 ms |
 
 That is the right shape at a safe, matched utilisation. But it is confounded a second way:
-at fixed ρ, absolute throughput is proportional to c (94 ev/s at c=5 against 755 at c=40), so
+at fixed ρ, absolute throughput is proportional to c (94 ev/s at c=5 against 756 at c=40), so
 pool size is entangled with load and JIT state. And there is a subtler problem -- if this
 baseline difference *is* the concurrency effect, then the inflation ratio published earlier
 divided out the very thing it was measuring.
@@ -639,7 +660,10 @@ across the entire sweep, which was captured but not reported:
 | 20 | 0.003 | 0.003 | 0.003 | 0.003 | 0.003 | 0.004 |
 | 40 | 0.003 | 0.003 | 0.004 | 0.004 | 0.004 | 0.014 |
 
-Negligible throughout -- between **14x and ~100x** below the 0.199 s/s that drove the 21%
+These cells are compared at *nominal* ρ, which Prediction 3 above shows maps to unequal
+actual utilisations -- so this table carries the same normalisation caveat. The conclusion is
+robust to it only because every cell is so far below the threshold of interest: negligible
+throughout, between **14x and ~100x** below the 0.199 s/s that drove the 21%
 capacity loss at 4x in Section 7 (0.199/0.014 = 14x at the sweep's single elevated cell,
 0.199/0.002 = 100x at its smallest). That is 1.2 to 2.0 orders of magnitude. An earlier
 version said "two orders", which was corrected to "14x to 66x" using 0.003 as the floor --
@@ -712,8 +736,18 @@ warmup inconsistency simultaneously.
 
 ### The law, restated at the confidence the data supports
 
-> **capacity = c / hold_time**, linear over at least an 8x range of pool concurrency. This
-> part is solid: it depends only on measured capacity, not on any utilisation normalisation.
+> **capacity = c / hold_time**, over at least an 8x range of pool concurrency, to within 5.6%.
+
+Two things to be precise about. This is the most robust finding here because it depends only
+on measured throughput rather than on any utilisation normalisation -- but "supported,
+approximate" is the right strength, not "solid": only c=5 demonstrably plateaued, and the
+5.6% deviation is systematic and unexplained.
+
+And `capacity = c / hold_time` is, per individual point, just Little's Law rearranged -- true
+by construction. **The content of the claim is that hold time is approximately constant as c
+varies**, which is what makes capacity predictable from pool size alone. The data support
+that only approximately: hold time falls from 28.02 ms at c=5 to 26.53 ms at c=40, a 5.6%
+drift whose cause is confounded and unresolved.
 
 The companion claim -- that the usable utilisation ceiling rises with c -- is **plausible,
 directionally supported at matched low utilisation, and not established.** The published
