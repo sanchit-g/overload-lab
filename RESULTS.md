@@ -15,7 +15,9 @@ randomized order, table truncated between runs). *Batch C* = the HikariCP pool-s
 | Capacity ~754 ev/s at c=20, Hikari-bound, Postgres idle | **stands** (Sections 1-3; reproduced in Batch B and C) |
 | Accepted tracks offered exactly until death | **stands**, and the offered rate is now gated (Batch A) |
 | The unbounded queue converts a throughput deficit into latency then heap death | **stands** |
-| `capacity = c / hold_time`, linear in c | **stands** (Section 9; four points over an 8x range) |
+| `capacity = c / hold_time`, linear in c | **stands** (Section 9; four points over an 8x range, and the known confounds push against it) |
+| Hold time falls as throughput rises ("JIT warmth") | **NOT ESTABLISHED** -- confounded with session order, table size and warmup (Section 9) |
+| GC pause accounts ~1:1 for capacity loss | **stands at 4x** (ratio 1.05-1.12); **does not fit at 2x** (0.60-0.99, baseline-dependent) |
 | Capacity degrades ~21% at 4x under GC pressure | **stands** (Section 7; direct GC evidence) |
 | Capacity loss was 27% | **superseded** by 20.8% (Section 7) |
 | Index maintenance cost ~4.5% of capacity | **withdrawn** -- within noise (Section 7) |
@@ -198,6 +200,11 @@ are getting. The lines that track severity are queue depth and heap.
 
 ## 4. Falsifiable cross-checks
 
+> **From the first, uncontrolled run.** These cross-checks use the n=1 values from Section 2
+> against a growing table. Section 7 repeats the drain-rate cross-check on n=3 controlled
+> replicates and reaches the same conclusion; the arithmetic here is superseded by it.
+
+
 **Drain rate recovered from the queue graph alone.** `drain = offered - queue slope`:
 
 | | offered | queue slope | implied drain | measured completed |
@@ -244,9 +251,11 @@ dashboard and capture queries now aggregate with `sum()`.
 ## 5. Where the model held, and where it broke
 
 > **Superseded in part.** This section reports the first, uncontrolled run. Its capacity-loss
-> figure (27%) and its 4x edge-latency figures (30.7 ms, "16x worse") were measured against a
-> growing table at n=1; Section 7 replaces them with 20.8% and 16.2 ms (~8x) from n=3
-> controlled replicates. The qualitative conclusions stand; these numbers do not.
+> figure (27%) and its 4x edge-latency figures (30.7 ms, "16x worse than 2x") were measured
+> against a growing table at n=1. Section 7 replaces them with 20.8% and 16.2 ms, which is
+> **10.8x the 2x value** of 1.5 ms -- the like-for-like comparison. (An earlier version of this
+> note said "~8x", which divided by the 1x value instead; wrong denominator.) The qualitative
+> conclusions stand; these numbers do not.
 
 
 | Prediction | Predicted | Measured | Verdict |
@@ -305,6 +314,11 @@ slower, which deepens the deficit, which fills the heap faster. That is the deat
 degrading everything, and only in the last seconds of a 64-second life.
 
 ## 6. What this says about the fragile design
+
+> **Numbers here are from the first, uncontrolled run.** In particular the 553/s figure for
+> 4x is superseded by Section 7's controlled median of **586 ev/s [544-596]**. The argument
+> of this section does not depend on which is used.
+
 
 The unbounded queue added **no capacity whatsoever**. Completion rate was ~754/s at 1x, 716/s
 at 2x and 553/s at 4x -- flat, then worse. What the queue changed was the *consequence* of
@@ -372,9 +386,27 @@ now make it quantitative:
 | 4x | **0.199** | **-20.8%** |
 
 At 4x the JVM spends **0.199 seconds of every wall-clock second in stop-the-world GC pause**
--- 19.9% of available time. Measured capacity loss over the same runs is **20.8%**. The
-correspondence is very nearly 1:1, which is what stop-the-world pauses predict: every worker
-thread is halted for that fraction of the time, so throughput falls by that fraction.
+-- 19.9% of available time. Measured capacity loss is **20.8%**, a ratio of 1.05. That is the
+correspondence stop-the-world pauses predict: every worker thread halts for that fraction of
+the time, so throughput falls by roughly that fraction.
+
+**The 2x point does not fit, and the baseline is soft.** At 2x, GC pause is 4.7% but capacity
+loss is only 2.8% -- a ratio of 0.60, not 1. Worse, the baseline itself is a lower bound: at
+1x the system completed exactly what was offered (740 = 740), so it was never saturated and
+740 measures the *load*, not the capacity. Substituting a saturated estimate changes the 2x
+conclusion materially:
+
+| baseline used | 2x loss vs GC | ratio | 4x loss vs GC | ratio |
+|---|---|---|---|---|
+| 740 (1x offered; unsaturated, a lower bound) | 2.84% vs 4.70% | 0.60 | 20.81% vs 19.90% | 1.05 |
+| 748 (c=20 sweep, measured at saturation) | 3.88% vs 4.70% | 0.82 | 21.66% vs 19.90% | 1.09 |
+| 754 (knee-ramp maximum) | 4.64% vs 4.70% | 0.99 | 22.28% vs 19.90% | 1.12 |
+
+So: **the 1:1 correspondence holds at 4x under every baseline (1.05-1.12), and the 2x point
+is baseline-dependent (0.60-0.99).** The honest claim is that GC pause accounts for the
+capacity loss at 4x, where the effect is large; at 2x the effect is small enough that the
+choice of baseline dominates it. Batch B contains no saturated-but-surviving condition, so it
+cannot supply a clean baseline -- that requires a dedicated maximum-throughput run.
 
 This is the death spiral made concrete. Overload fills the heap; filling the heap costs GC
 time; GC time reduces capacity; reduced capacity deepens the deficit; the deficit fills the
@@ -497,7 +529,8 @@ last 60s of every hold.
 | 40 | 1,509 ev/s | 1,508 ev/s | 1.00 | 37.7 ev/s | 26.53 ms |
 
 `capacity = c / hold_time` holds over an eightfold range of pool size. Capacity per
-connection is flat to within 5%.
+connection spans 35.69 to 37.70 ev/s -- a **5.6% spread**, rising monotonically with c rather
+than scattering, which is itself a systematic effect discussed under Prediction 2.
 
 ### Prediction 2: linearity breaks at c=40 -- REFUTED
 
@@ -555,12 +588,17 @@ pool size is entangled with load and JIT state. And there is a subtler problem -
 baseline difference *is* the concurrency effect, then the inflation ratio published earlier
 divided out the very thing it was measuring.
 
-**What a valid re-run requires.** (1) A dedicated capacity run per pool size, then ρ defined
-against *measured* capacity, with the near-saturation points re-run at matched real ρ (0.90,
-0.95, 0.98) on both sides of the line. (2) A long common warmup at a high fixed rate before
-every measurement, so JIT state is equalised. (3) Absolute latencies reported alongside any
-ratio. Note that c, ρ and absolute throughput cannot all be held independent -- `λ = ρc/h` --
-so the entanglement of c with load is structural and must be reported, not removed.
+**What a valid re-run requires.** (1) A dedicated capacity run per pool size, pushed until
+completions plateau, then ρ defined against that *measured* capacity, with near-saturation
+points at matched real ρ (0.90, 0.95, 0.98) on both sides of the line. (2) A long common
+warmup at a single high fixed rate before every measurement, so JIT state is equalised across
+pool sizes -- not the current 20s at each pool's own ρ=0.5. (3) Truncation between *steps*,
+not once per sweep, so table size stops scaling with both c and ρ. (4) Randomized order with
+n>=3, as Batch B used. (5) Absolute latencies reported alongside any ratio. (6) Container CPU
+scraped, so "nothing else bound" can be shown rather than asserted.
+
+Note that c, ρ and absolute throughput cannot all be held independent -- `λ = ρc/h` -- so the
+entanglement of c with load is structural and must be reported, not removed.
 
 ### Prediction 2, revisited: GC ruled out, CPU never measured
 
@@ -583,6 +621,65 @@ It is not the whole refutation. Gateway CPU, downstream-sim CPU, and Postgres CP
 scraped -- the observability stack has no container-metrics exporter. "Nothing else bound at
 1,508 ev/s" therefore remains **partially shown**. Adding cAdvisor to the obs stack would
 close it, and should precede any further capacity work.
+
+### Batch C design defects
+
+Batch B was built specifically to remove three confounds: it randomized run order, truncated
+the table between runs, and used n=3 replicates. **Batch C reintroduced all three.** The
+lessons from one batch were not carried into the next, and that is the honest summary of
+what follows.
+
+**The provenance of "measured capacity" was never stated.** The denominators used above
+(178, 366, 748, 1508 ev/s) are the *maximum completion rate across the six steps*, which is
+the ρ=1.05 overload step for c=10/20/40 and the ρ=0.97 step for c=5. Per-step completions:
+
+| c | ρ=0.50 | 0.70 | 0.85 | 0.92 | 0.97 | 1.05 |
+|---|---|---|---|---|---|---|
+| 5 | 94 | 132 | 160 | 172 | **178** | **178** |
+| 10 | 190 | 264 | 322 | 348 | 364 | **366** |
+| 20 | 378 | 528 | 640 | 694 | 732 | **748** |
+| 40 | 756 | 1,058 | 1,284 | 1,390 | 1,464 | **1,508** |
+
+Only **c=5 plateaued** (178 at both 0.97 and 1.05), so only there is saturation demonstrated.
+At c=40 completions were **still rising** at the last step (1,464 → 1,508), so 1,508 is
+probably an *underestimate* of capacity -- which would push the actual ρ at nominal 0.97
+below 0.971 and make the normalisation defect worse, not better. Capacity should come from a
+dedicated maximum-throughput run that is pushed until it plateaus, not inferred from the
+top of a ramp.
+
+**Truncation happened once per sweep, not once per step.** The table therefore grew across the
+six ascending steps, and its final size scales with c:
+
+| c | approximate rows by the final step |
+|---|---|
+| 5 | ~84,000 |
+| 10 | ~170,000 |
+| 20 | ~339,000 |
+| 40 | ~678,000 |
+
+Index-maintenance exposure is thus confounded with **both** variables under test -- an 8x
+spread across c, and monotonically increasing with ρ inside each sweep. This is precisely the
+confound Batch B was constructed to eliminate. Its direction is at least known: larger tables
+make inserts slower, so c=40 carried the heaviest table and still showed the *shortest* hold
+time, meaning the confound works against the observed trend rather than manufacturing it.
+That is mitigation, not control.
+
+**The sweep was not randomized and had no replicates.** It ran strictly ascending in c across
+a single ~38-minute session (03:45 → 04:23), n=1 per point. So session-level warmup is
+perfectly confounded with c, and the "throughput makes the system faster" explanation for the
+falling hold time cannot be separated from "the JVM had been running longer by the time we
+reached c=40". Batch B randomized precisely to avoid this.
+
+**Warmup did not match the documented method and was not equalised.** The Method section
+specifies 60s discarded; `run-sweep.sh` defaults to 20s, and runs it at ρ=0.5 -- the lowest,
+coldest rate of the sweep. So JIT state at the start of each sweep was neither the documented
+60s nor comparable across pool sizes. This feeds directly into the previous defect.
+
+**Consequence.** Prediction 1 (`capacity = c / hold_time`) is the most robust finding here
+because it depends only on measured throughput, and the known confounds push against it
+rather than toward it. The hold-time trend (28.02 → 26.53 ms) and every explanation offered
+for it are **not established** -- they are confounded with session warmup, table size and
+warmup inconsistency simultaneously.
 
 ### The law, restated at the confidence the data supports
 
