@@ -1,5 +1,27 @@
 # Results
 
+## Status of claims (read this first)
+
+This document has been revised three times as the experiment was made more rigorous. Numbers
+in later sections supersede earlier ones. An external review on 2026-09-12 found several
+defects; they are listed here rather than quietly patched.
+
+**Terminology.** *Batch A* = instrumentation added after the first run (GC series, capture
+assertions, offered-rate gate). *Batch B* = the controlled re-measurement of stage s0 (n=3,
+randomized order, table truncated between runs). *Batch C* = the HikariCP pool-size sweep.
+
+| Claim | Status |
+|---|---|
+| Capacity ~754 ev/s at c=20, Hikari-bound, Postgres idle | **stands** (Sections 1-3; reproduced in Batch B and C) |
+| Accepted tracks offered exactly until death | **stands**, and the offered rate is now gated (Batch A) |
+| The unbounded queue converts a throughput deficit into latency then heap death | **stands** |
+| `capacity = c / hold_time`, linear in c | **stands** (Section 9; four points over an 8x range) |
+| Capacity degrades ~21% at 4x under GC pressure | **stands** (Section 7; direct GC evidence) |
+| Capacity loss was 27% | **superseded** by 20.8% (Section 7) |
+| Index maintenance cost ~4.5% of capacity | **withdrawn** -- within noise (Section 7) |
+| The latency knee sharpens as pool concurrency rises | **NOT ESTABLISHED** -- confounded (Section 9) |
+| Nothing else bound at 1,508 ev/s | **partially shown** -- GC ruled out, CPU never measured |
+
 All numbers produced by `./scripts/run-stage.sh <stage>` against the committed configuration.
 Every graph is regenerable: re-run the stage.
 
@@ -82,8 +104,6 @@ capacity  ~=  20 / 0.028  ~=  700 events/s  ~=  35 rps at batch 20
 ---
 
 ---
-
-# Results
 
 ## 1. Finding the knee
 
@@ -210,6 +230,12 @@ dashboard and capture queries now aggregate with `sum()`.
 
 ## 5. Where the model held, and where it broke
 
+> **Superseded in part.** This section reports the first, uncontrolled run. Its capacity-loss
+> figure (27%) and its 4x edge-latency figures (30.7 ms, "16x worse") were measured against a
+> growing table at n=1; Section 7 replaces them with 20.8% and 16.2 ms (~8x) from n=3
+> controlled replicates. The qualitative conclusions stand; these numbers do not.
+
+
 | Prediction | Predicted | Measured | Verdict |
 |---|---|---|---|
 | capacity | 700 ev/s | 754 ev/s | correct, 7% under |
@@ -294,21 +320,32 @@ Order executed: `4x, 1x, 2x, 2x, 2x, 4x, 1x, 4x, 1x` (seed 20260912).
 
 ### Results -- median [min-max] over n=3
 
-| condition | completed ev/s | queue slope /s | life (s) |
-|---|---|---|---|
-| **1x** (740 ev/s offered) | 740 [740-740] | 0 [0-0] | 241 [240-241] survived |
-| **2x** (1,480 ev/s) | 719 [713-722] | 763 [760-768] | 228 [226-230] |
-| **4x** (2,960 ev/s) | 586 [544-596] | 2,347 [2,331-2,386] | 64 [64-66] |
+Note the **window length differs by condition** (1x ran 4 min, 2x 5 min, 4x 2 min), chosen
+so each window comfortably contains the expected outcome. So "time to death" and "window
+length" are separate columns -- conflating them, as an earlier draft did, makes a surviving
+run look like a short-lived one.
+
+| condition | completed ev/s | queue slope /s | window | time to death |
+|---|---|---|---|---|
+| **1x** (740 ev/s offered) | 740 [740-740] | 0 [0-0] | 240 s | **survived** (ran to 241 s) |
+| **2x** (1,480 ev/s) | 719 [713-722] | 763 [760-768] | 300 s | 228 [226-230] s |
+| **4x** (2,960 ev/s) | 586 [544-596] | 2,347 [2,331-2,386] | 120 s | 64 [64-66] s |
+
+(Section 2's 1x figure of 360 s is the same outcome from a 6-minute window in the earlier,
+uncontrolled run -- a different window length, not a different result.)
 
 | condition | GC pause s/s | edge p99 ms | e2e p99 ms | queue peak |
 |---|---|---|---|---|
 | 1x | 0.004 [0.003-0.005] | 2.0 [2.0-2.7] | 66 [61-71] | 52 [42-64] |
-| 2x | 0.047 [0.046-0.060] | 1.5 [1.4-1.9] | 91,143 | 180,668 |
-| 4x | 0.199 [0.191-0.228] | 16.2 [12.9-22.0] | 51,030 | 169,080 |
+| 2x | 0.047 [0.046-0.060] | 1.5 [1.4-1.9] | 91,143 [90,899-91,201] | 180,668 [180,661-183,083] |
+| 4x | 0.199 [0.191-0.228] | 16.2 [12.9-22.0] | 51,030 [50,674-51,225] | 169,080 [167,634-170,466] |
 
-**Reproducibility is high.** Completion rate at 1x varied not at all across three runs; queue
-slope at 2x spanned 1% (760-768/s); time to death at 2x spanned 1.7% (226-230s). The
-measurements are stable enough that differences of a few percent are real.
+**Reproducibility varies by condition, and the 4x condition is the noisy one.** At 1x,
+completion was identical across three runs; at 2x, queue slope spanned 1% and time to death
+1.7%. But **4x completion spanned 544-596, a 9% range** -- unsurprising, since that condition
+is dominated by GC behaviour that is itself variable. So differences of a few percent are
+resolvable at 1x and 2x, and are **not** resolvable at 4x. An earlier draft claimed the
+former applied throughout; it does not.
 
 ### GC: direct evidence, replacing inference
 
@@ -337,12 +374,18 @@ heap faster.
 | 553 ev/s | Section 2, table at 864k rows and growing |
 | 586 ev/s | here, table truncated before the run |
 
-Index maintenance on the grown table cost **~33 ev/s, about 4.5% of baseline capacity**.
-Section 5 estimated that effect at "roughly 1%" by extrapolating linearly from two points.
-That extrapolation was wrong by a factor of about four: btree insert cost against table size
-is not linear, and two points cannot establish the shape. The GC conclusion survives -- it
-was always the dominant term -- but the confound was materially larger than claimed, and
-claiming it at all from an uncontrolled design was the real error.
+**This comparison does not survive scrutiny, and the claim is withdrawn.** The single
+uncontrolled value of 553 ev/s sits *inside* Batch B's own 4x range of [544-596]. The
+apparent "33 ev/s / 4.5% cost of index maintenance" is within run-to-run noise, and one
+uncontrolled point cannot be differenced against a median of three.
+
+This is the same class of error as the factor-four extrapolation it was meant to correct: a
+quantitative claim from a design that cannot support one. **The effect of the growing table
+is unresolved.** Measuring it needs paired replicates -- n>=3 at 4x with truncation and n>=3
+without, in one session, randomized -- which is a deliberate experiment, not a by-product.
+
+What Batch B does establish is that the table was never *necessary* for the capacity loss:
+4x on a freshly truncated table still degrades to 586 ev/s, so GC is sufficient on its own.
 
 ### Cross-check: drain recovered from the queue graph
 
@@ -455,48 +498,86 @@ service is running at 178 ev/s and the JVM is comparatively cold; at c=40 it is 
 86.0 at c=10, 43.1 at c=20, 40.2 at c=40 -- at ρ=0.5 in every case, where nothing is queueing.
 **Throughput itself makes the system faster per unit of work.**
 
-### Prediction 3: the knee sharpens with c -- CONFIRMED, but my diagnostic point was wrong
+### Prediction 3: the knee sharpens with c -- NOT ESTABLISHED (confounded)
 
-Latency inflation relative to the ρ=0.5 baseline:
+**The claim published here on 2026-09-11 does not survive review, and is withdrawn pending a
+re-run.** The defect is in the denominator.
 
-| c | e2e@0.50 | e2e@0.85 | inflation | e2e@0.97 | inflation | queue @0.97 |
+Utilisation for this sweep was defined against each pool's *predicted* capacity
+(`c / 26.5ms`, Section 8). But measured capacity fell short of predicted at low c and matched
+it at high c. So the same nominal ρ corresponds to different real utilisations:
+
+| c | offered at nominal ρ=0.97 | measured capacity | **actual ρ** | queue | e2e p99 |
+|---|---|---|---|---|---|
+| 5 | 182 ev/s | 178 ev/s | **1.022** | 180 | 9,830 ms |
+| 10 | 367 ev/s | 366 ev/s | **1.002** | 36 | 1,453 ms |
+| 20 | 731 ev/s | 748 ev/s | 0.977 | 0 | 62.6 ms |
+| 40 | 1,465 ev/s | 1,508 ev/s | 0.971 | 0 | 50.2 ms |
+
+**The c=5 and c=10 pools were run at or above their real capacity; c=20 and c=40 were run
+below it.** ρ>1 means unbounded queue growth by definition, so the queue column (180, 36, 0,
+0) and the latency column follow from which side of saturation each point landed on -- not
+necessarily from concurrency. The measurement cannot distinguish the mechanism from the
+denominator error. The spread looks small (1.02 to 0.97) but latency near saturation goes as
+`1/(1-ρ)`, so crossing 1.0 is a qualitative change, not a 5% one.
+
+**What the data still supports, weakly.** At ρ≈0.5, where actual utilisations were tightly
+matched (0.527, 0.517, 0.504, 0.501) and far from saturation, excess latency over the c=40
+floor falls monotonically with pool size:
+
+| c | actual ρ | e2e p99 | excess over 40.2 ms |
+|---|---|---|---|
+| 5 | 0.527 | 135.6 ms | 95.4 ms |
+| 10 | 0.517 | 86.0 ms | 45.8 ms |
+| 20 | 0.504 | 43.1 ms | 2.9 ms |
+| 40 | 0.501 | 40.2 ms | 0.0 ms |
+
+That is the right shape at a safe, matched utilisation. But it is confounded a second way:
+at fixed ρ, absolute throughput is proportional to c (94 ev/s at c=5 against 755 at c=40), so
+pool size is entangled with load and JIT state. And there is a subtler problem -- if this
+baseline difference *is* the concurrency effect, then the inflation ratio published earlier
+divided out the very thing it was measuring.
+
+**What a valid re-run requires.** (1) A dedicated capacity run per pool size, then ρ defined
+against *measured* capacity, with the near-saturation points re-run at matched real ρ (0.90,
+0.95, 0.98) on both sides of the line. (2) A long common warmup at a high fixed rate before
+every measurement, so JIT state is equalised. (3) Absolute latencies reported alongside any
+ratio. Note that c, ρ and absolute throughput cannot all be held independent -- `λ = ρc/h` --
+so the entanglement of c with load is structural and must be reported, not removed.
+
+### Prediction 2, revisited: GC ruled out, CPU never measured
+
+The refutation above was asserted without showing what *would* have bound. GC pause rate
+across the entire sweep, which was captured but not reported:
+
+| c | ρ=0.50 | 0.70 | 0.85 | 0.92 | 0.97 | 1.05 |
 |---|---|---|---|---|---|---|
-| 5 | 135.6 ms | 139.0 ms | 1.02x | **9,830 ms** | **72.5x** | 180 |
-| 10 | 86.0 ms | 87.3 ms | 1.02x | **1,453 ms** | **16.9x** | 36 |
-| 20 | 43.1 ms | 48.4 ms | 1.12x | 62.6 ms | 1.45x | 0 |
-| 40 | 40.2 ms | 42.5 ms | 1.06x | 50.2 ms | 1.25x | 0 |
+| 5 | 0.002 | 0.002 | 0.003 | 0.003 | 0.003 | 0.002 |
+| 10 | 0.002 | 0.002 | 0.002 | 0.002 | 0.003 | 0.003 |
+| 20 | 0.003 | 0.003 | 0.003 | 0.003 | 0.003 | 0.004 |
+| 40 | 0.003 | 0.003 | 0.004 | 0.004 | 0.004 | 0.014 |
 
-At **ρ=0.85 there is no signal at all** -- every pool size sits within 12% of its baseline,
-including c=5. The metric I nominated in advance would have shown nothing. The action is
-between ρ=0.92 and ρ=0.97.
+Negligible throughout -- two orders of magnitude below the 0.199 s/s that drove the 21%
+capacity loss at 4x in Section 7. **GC is ruled out as the thing bending the line.** That is
+a real result and it is the most likely candidate eliminated.
 
-At **ρ=0.97 the effect is enormous and perfectly monotonic**: 72.5x, 16.9x, 1.45x, 1.25x. A
-five-connection pool at 97% utilisation is serving p99 latencies of **9.8 seconds**; a
-forty-connection pool at the same utilisation is at 50 ms.
+It is not the whole refutation. Gateway CPU, downstream-sim CPU, and Postgres CPU were never
+scraped -- the observability stack has no container-metrics exporter. "Nothing else bound at
+1,508 ev/s" therefore remains **partially shown**. Adding cAdvisor to the obs stack would
+close it, and should precede any further capacity work.
 
-Queue depth is the cleanest evidence, because it is an absolute count rather than a ratio
-against a baseline that itself varies with c: **180 events queued at c=5, 36 at c=10, zero at
-c=20 and c=40**, all at the same 97% utilisation. Queueing at high utilisation happens at low
-concurrency and simply does not happen at high concurrency. That is the Erlang C prediction,
-measured.
+### The law, restated at the confidence the data supports
 
-### The law
+> **capacity = c / hold_time**, linear over at least an 8x range of pool concurrency. This
+> part is solid: it depends only on measured capacity, not on any utilisation normalisation.
 
-> **capacity = c / hold_time**, linear over at least an 8x range of pool concurrency -- and
-> the *usable* utilisation ceiling rises with c. At c=5 you must stay below ~92% or latency
-> explodes by 70x. At c=40 you can run at 97% for a 1.25x latency cost.
->
-> Higher concurrency therefore buys two things at once: proportionally more capacity, and
-> permission to run closer to it. What it costs is warning -- the same flatness that lets a
-> large pool run at 97% means latency gives no gradual signal before saturation.
+The companion claim -- that the usable utilisation ceiling rises with c -- is **plausible,
+directionally supported at matched low utilisation, and not established.** The published
+version of it, and the "keep utilisation under 70-80% is miscalibrated" conclusion drawn from
+it, are withdrawn pending the re-run described above.
 
-This supersedes the single-pool-size claim in Section 5. The "keep utilisation under 70-80%"
-rule is calibrated for small concurrency; at c=40 it leaves roughly a quarter of the
-achievable throughput unused.
+### Arithmetic corrections
 
-### Caveat
-
-Because each pool size is measured at its own absolute throughput, baseline latency differs
-across the four (135 ms at c=5 against 40 ms at c=40) through the JIT-warmth effect above.
-The inflation ratio normalises for this, and the queue-depth column does not depend on it at
-all -- both agree, so the conclusion does not rest on the normalisation.
+- Capacity per connection spans 35.69 to 37.70 ev/s, a spread of **5.6%**, not "within 5%".
+- Implied hold times are computed from unrounded capacities (178.45, 365.89, 748.28, 1507.97
+  ev/s); the rounded capacities shown in the table do not reproduce them exactly.
