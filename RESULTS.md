@@ -13,7 +13,8 @@ randomized order, table truncated between runs). *Batch C* = the HikariCP pool-s
 
 | Claim | Status |
 |---|---|
-| Capacity ~754 ev/s at c=20, Hikari-bound, Postgres idle | **stands** (Sections 1-3; reproduced in Batch B and C) |
+| Capacity ~754 ev/s at c=20, Hikari-bound | **stands** (Sections 1-3; reproduced in Batch B and C) |
+| Postgres was idle / never the constraint | **inference, not measurement** -- its CPU was never scraped; supported indirectly by capacity scaling linearly with Hikari `c` to 1,508 ev/s (Section 9) |
 | Accepted tracks offered exactly until death | **stands**, and the offered rate is now gated (Batch A) |
 | The unbounded queue converts a throughput deficit into latency then heap death | **stands** |
 | `capacity = c / hold_time`, linear in c | **supported, approximate** -- 8x range to within 5.6%, but only c=5 demonstrably plateaued and the 5.6% deviation is systematic and unexplained (Section 9) |
@@ -97,7 +98,7 @@ capacity  ~=  20 / 0.028  ~=  700 events/s  ~=  35 rps at batch 20
 | time to death, 4x | **~1.7 min** | same, at ~1700/s excess |
 | Hikari active | **pegged flat at 20** | pool is the constraint |
 | Hikari pending | **pegged flat at 44** | 64 workers - 20 connections |
-| Postgres CPU | **low, 10-20%** | the database was never the problem |
+| Postgres CPU | **low, 10-20%** | the database was never the problem (note: this prediction was never checked -- CPU was not scraped) |
 | edge p99 | **flat, 10-20ms**, until the final seconds | `/events` returns 202 on enqueue |
 | e2e p99 | **climbs without bound** | queue wait dominates |
 | accepted rate | **tracks offered load** right up to death | the unbounded queue accepts everything |
@@ -172,7 +173,8 @@ not a kernel OOM-kill of the container. The clean failure path.
 
 ## 3. Which resource saturated, and how the rest followed
 
-**HikariCP was the binding constraint, and Postgres was never the problem.** During the ramp,
+**HikariCP was the binding constraint.** During the knee ramp (Section 1, `k6/knee.js` -- not
+a stage run),
 at 80 rps:
 
 ```
@@ -190,7 +192,14 @@ The causal chain:
 2. Above that, the unbounded queue absorbs the excess at exactly `offered - 754` per second.
 3. Queue depth sets end-to-end latency (`depth / drain rate`) and heap (~1.2KB per event).
 4. Heap reaches 256MB; the JVM exits.
-5. Postgres stayed near-idle throughout. The HTTP pool was never contended.
+5. The HTTP pool was never contended (leased 19 of 32, pending 0 -- measured).
+6. Postgres is *inferred* not to have been the constraint. **Its CPU was never scraped**, so
+   this does not rest on a measurement of the database. What supports it is scaling
+   behaviour: capacity rises linearly with Hikari `c` up to 1,508 ev/s (Section 9), and if
+   Postgres were the binding resource, adding database connections would show diminishing
+   returns rather than a straight line. Hold time also falls slightly as `c` rises, where
+   database contention would raise it. Both are strong indirect arguments; neither is a CPU
+   reading.
 
 `http_leased ~= hikari_active` is structural, not coincidence: a worker cannot reach the HTTP
 call without already holding a DB connection, so HTTP leasing is capped at 20 by a pool sized
@@ -205,8 +214,8 @@ are getting. The lines that track severity are queue depth and heap.
 ## 4. Falsifiable cross-checks
 
 > **From the first, uncontrolled run.** These cross-checks use the n=1 values from Section 2
-> against a growing table. Section 7 repeats the drain-rate cross-check on n=3 controlled
-> replicates and reaches the same conclusion; the arithmetic here is superseded by it.
+> against a growing table. All three are repeated on n=3 controlled replicates in Section 7
+> and reach the same conclusions; the arithmetic here is superseded by those.
 
 
 **Drain rate recovered from the queue graph alone.** `drain = offered - queue slope`:
@@ -264,7 +273,10 @@ dashboard and capture queries now aggregate with `sum()`.
 > Hikari-bound capacity, Postgres idle at collapse, accepted tracking offered exactly, and the
 > queue converting a deficit into latency debt and heap death. Also surviving as *direct
 > observation at c=20*: latency was flat from ρ≈0.53 to ρ≈0.80 and then went vertical, and the
-> system ran stably at ρ≈0.98 (confirmed at n=3 in Section 7).
+> system **survived indefinitely at 740 ev/s offered** with queue depth near zero (confirmed at
+> n=3 in Section 7). Note that this is a statement about the *offered load*, not about
+> utilisation: since 1x completed exactly what was offered, it was never saturated, so 740 ev/s
+> is a lower bound on capacity and ρ at that point is not pinned at 0.98.
 >
 > **Withdrawn:** the multi-server *explanation* for that flatness, and the operational
 > conclusion drawn from it below -- that a high-concurrency system offers more usable headroom
@@ -278,7 +290,7 @@ dashboard and capture queries now aggregate with `sum()`.
 | capacity | 700 ev/s | 754 ev/s | correct, 7% under |
 | Hikari active / pending | 20 / 44 | 20 / 45 | correct |
 | HTTP pool contention | none | none, leased 19/32 | correct |
-| Postgres CPU | low | low, never a constraint | correct |
+| Postgres CPU | low | **not measured** | unverifiable -- see Section 3 |
 | accepted tracks offered | yes | exactly, at all loads | correct |
 | edge p99 flat | flat 10-20ms | flat, and *falling* | correct, understated |
 | heap per event | 1,150 B | ~1,200 B | correct |
@@ -471,6 +483,38 @@ At 1x and 2x this recovers capacity to within 0.3%. At 4x it overshoots by 4.6%,
 is itself informative: the slope is fitted across the whole window while capacity is *falling*
 during it as GC worsens, so a single linear slope cannot describe a run whose drain rate is
 not constant.
+
+### Cross-check: heap per queued event (controlled, n=3)
+
+Section 4 estimated this at n=1. On controlled replicates:
+
+| condition | bytes per queued event, median [min-max] |
+|---|---|
+| 2x | 1,070 [1,042-1,082] |
+| 4x | 1,085 [984-1,101] |
+
+Against the 1,150 B predicted before any run. The n=1 figures (1,173 and 1,253 B) sat slightly
+high; the controlled medians are tighter and closer to prediction.
+
+### Cross-check: rows written against the completions integral (controlled, n=3)
+
+Because the table is truncated before every run, each run's row count *is* its total written.
+Comparing that to the median completion rate integrated over the window plus warmup:
+
+| condition | rows / (completed x duration), median |
+|---|---|
+| 1x | 0.997 |
+| 2x | 0.988 |
+| 4x | **1.096** |
+
+At 1x and 2x the agreement is within 1.2%, so accepted-but-unwritten events are fully
+accounted for by queue depth.
+
+**The 4x discrepancy is not an error -- it is corroboration.** Using a *median* completion
+rate assumes the rate is constant, and at 4x it is not: it falls throughout the run as GC
+worsens. A constant-rate model therefore under-predicts the total, which is exactly the 10%
+shortfall observed. The row count independently confirms that capacity degraded within the
+run.
 
 ### What supersedes what
 
@@ -667,8 +711,10 @@ throughout, between **14x and ~100x** below the 0.199 s/s that drove the 21%
 capacity loss at 4x in Section 7 (0.199/0.014 = 14x at the sweep's single elevated cell,
 0.199/0.002 = 100x at its smallest). That is 1.2 to 2.0 orders of magnitude. An earlier
 version said "two orders", which was corrected to "14x to 66x" using 0.003 as the floor --
-but the table's floor is 0.002, so that correction understated the range in turn. **GC is ruled out as the thing bending the line.** That is
-a real result and it is the most likely candidate eliminated.
+but the table's floor is 0.002, so that correction understated the range in turn.
+
+**GC is ruled out as the thing bending the line.** That is a real result, and it is the most
+likely candidate eliminated.
 
 It is not the whole refutation. Gateway CPU, downstream-sim CPU, and Postgres CPU were never
 scraped -- the observability stack has no container-metrics exporter. "Nothing else bound at
@@ -684,7 +730,8 @@ what follows.
 
 **The provenance of "measured capacity" was never stated.** The denominators used above
 (178, 366, 748, 1508 ev/s) are the *maximum completion rate across the six steps*, which is
-the ρ=1.05 overload step for c=10/20/40 and the ρ=0.97 step for c=5. Per-step completions:
+the ρ=1.05 overload step for c=10/20/40, and the ρ=0.97/1.05 plateau for c=5. Per-step
+completions:
 
 | c | ρ=0.50 | 0.70 | 0.85 | 0.92 | 0.97 | 1.05 |
 |---|---|---|---|---|---|---|
