@@ -9,17 +9,20 @@ The goal is not to survive load. It is to produce a bottleneck you can explain.
 
 Each worker takes a database connection, INSERTs, and then calls a downstream service **while
 still holding that connection**. Capacity is therefore `poolSize / holdTime` — a ceiling set
-by a connection pool, and not by the database, which stays out of the way entirely.
+by a connection pool rather than by the database. (That the database is not the constraint is
+an *inference, not a measurement* — its CPU was never scraped. What supports it is capacity
+scaling linearly with pool size all the way to 1,508 ev/s, which a database-bound system
+would not do.)
 
 Push past it and the service returns **HTTP 202 to 100% of requests right up until the JVM
 dies of heap exhaustion**. Every conventional signal reads healthy while that happens:
 
 | signal | at 2x capacity | |
 |---|---|---|
-| HTTP p99 at the edge | **1.5 ms** | and *falling* as load rises |
-| HikariCP active / pending | **20 / 45** | pegged flat from the first minute |
+| HTTP p99 at the edge | **1.5 ms** | *down* from 2.0 ms at 1x; it only rises at 4x (16.2 ms), once GC degrades everything |
+| HikariCP active / pending | **20 / 46** | pegged flat from the first minute |
 | accepted throughput | **1,480 ev/s** | exactly what was offered |
-| completed throughput | **719 ev/s** | the real ceiling |
+| completed throughput | **719 ev/s** | all the service actually drained — already under the 754 ev/s ceiling, from GC |
 | end-to-end p99 | **91 seconds** | |
 | queue depth | **180,668** | and climbing |
 | time to death | **228 s** | JVM heap, `exit=3` |
@@ -56,7 +59,7 @@ assertion, the container's exit state — and renders PNGs into `docs/img/`.
 ```
 gateway/           the service under test; the bug lives in EventWriter.java
 downstream-sim/    dependency simulator with runtime latency/failure knobs
-vendor/            distributed-rate-limiter, pinned as a submodule
+vendor/            distributed-rate-limiter, pinned as a submodule; not yet called from the gateway
 compose/           two stacks: app and observability
 k6/                open-model load scripts (constant-arrival-rate, not closed)
 scripts/           run-stage.sh, run-sweep.sh
