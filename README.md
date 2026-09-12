@@ -30,8 +30,10 @@ dies of heap exhaustion**. Every conventional signal reads healthy while that ha
 The only two lines that move are queue depth and heap. Neither appears on a default Spring
 Boot dashboard.
 
-Capacity also scales linearly with the pool: measured 178, 366, 748 and 1,508 ev/s at pool
-sizes 5, 10, 20 and 40 — `capacity = c / hold_time` to within 5.6% over an eightfold range.
+Capacity also scales with the pool: measured 178, 366, 748 and 1,508 ev/s at pool sizes 5, 10,
+20 and 40 — `capacity = c / hold_time` to within 5.6% over an eightfold range. Only the
+smallest pool demonstrably plateaued, so the larger figures are probably slight
+underestimates; [RESULTS.md](RESULTS.md) carries the qualification.
 
 ## Quickstart
 
