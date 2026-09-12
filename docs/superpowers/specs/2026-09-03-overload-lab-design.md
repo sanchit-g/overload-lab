@@ -163,7 +163,9 @@ confident, wrong "no measurable delta" result; this is the guard against that.
 
 ## Findings in starter v1.0.0 (pinned 2789431)
 
-Measured in Phase 1, fixed in Phase 2.
+These are **predictions from reading the source**, not measurements. Nothing in this table has
+been observed under load, because the rate limiter has never been called by the gateway. They
+become measurements in Phase 1 and fixes in Phase 2.
 
 | # | Finding | Evidence |
 |---|---|---|
@@ -201,11 +203,23 @@ without a second code path.
 Each is separately shippable. Measure first, fix second, so every Phase 2 delta is
 attributable to a specific commit rather than accumulated drift.
 
-| Phase | Delivers | Plan |
+| Phase | Delivers | Status |
 |---|---|---|
-| 0 | Repo, submodule, both compose stacks, downstream-sim, gateway at s0, obs stack, k6, capture tooling. Reproducible collapse + calibrated knee. | this plan |
-| 1 | Stages s1–s4 on starter v1.0, profiles A/B1/B2/C, all three sweeps. RESULTS.md v1 with the 8 findings measured. | separate |
-| 2 | 8 fixes + 3 capabilities as PRs to the starter, submodule bump, re-measure. v1.0 vs v1.1 deltas. | separate |
+| 0 | Repo, submodule, both compose stacks, downstream-sim, gateway at s0, obs stack, k6, capture tooling. Reproducible collapse + calibrated knee. | **DONE** (2026-09-11). Capacity 754 ev/s; collapse characterised at n=3; see `RESULTS.md`. |
+| 1 | Stages s1-s4, each with a measured delta against the s0 baseline. | **NOT STARTED.** No s1/s2/s3/s4 run exists. Timeouts (`DownstreamClientConfig`) and the bounded queue (`IngestQueue`) are implemented behind flags and need only runs. **Admission control is not wired** -- the rate limiter is a declared dependency that is never called. **The circuit breaker is absent** -- Resilience4j is not in the build. |
+| 2 | The eight starter findings fixed as PRs, submodule bump, re-measure. | **NOT STARTED**, and blocked on Phase 1: the findings are predictions about a library that has not yet been measured under load. |
+
+### Work done outside the phase plan
+
+After Phase 0 completed, three measurement batches and three review cycles hardened the
+baseline: instrumentation (GC series, capture assertions, an offered-rate gate), a controlled
+re-measurement at n=3 with randomized order, and a pool-size sweep. This produced the capacity
+scaling result and corrected several claims, and it is recorded in `docs/lab-notebook.md`.
+
+It also consumed the effort that Phase 1 was meant to receive. Remaining rigor items --
+container CPU via cAdvisor, the pool-size sweep re-run against measured capacity, a long
+stability run -- are **deliberately parked** behind Phase 1. They are real and the notebook
+records exactly what each would settle, but none is a prerequisite for measuring a protection.
 
 ## Calibration targets
 
