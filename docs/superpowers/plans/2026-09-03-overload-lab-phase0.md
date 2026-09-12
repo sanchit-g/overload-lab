@@ -1,5 +1,11 @@
 # overload-lab Phase 0 — Implementation Plan
 
+> **COMPLETE — 83/83 tasks, 2026-09-11.** This plan is kept as provenance: it is how the lab
+> was built, step by step, including the defects found along the way. It is not outstanding
+> work. For what the lab measured, see [RESULTS.md](../../../RESULTS.md); for the working
+> record, [docs/lab-notebook.md](../../lab-notebook.md). The next body of work is Phase 1 —
+> the four protections — which will get its own plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the lab foundation and produce a reproducible, instrumented collapse of the fragile gateway (stage s0), with a calibrated knee rate.
